@@ -23,6 +23,10 @@ API_KEY = "ptla_vXHi5hrHcUosQbB68PTGULuVEFmlnSZsBx6GFsTkqgz"  # Application API 
 MONITOR_IPS = ["192.168.86.45"]  # Internal IP of your game servers
 MONITOR_PORTS = ["25565", "24454", "8100", "19132"]  # Ports your game servers use
 
+# Game server VM SSH details (to check connections remotely)
+GAME_SERVER_VM_IP = "192.168.86.45"
+GAME_SERVER_VM_USER = "root"  # Change if different
+
 # Inactivity timeout in seconds (5 minutes = 300 seconds)
 INACTIVITY_TIMEOUT = 300
 
@@ -159,29 +163,40 @@ def check_any_active_connections():
 
 def check_network_connections():
     """
-    Check for active network connections to monitored IPs and ports.
-    This checks if anyone is connected to your game servers.
+    Check for active network connections on the game server VM.
+    SSHs into the VM and checks for connections to monitored ports.
     """
     try:
-        # Check for established connections using ss (faster than netstat)
+        # SSH into game server VM and check for established connections
+        ssh_command = [
+            "ssh",
+            "-o", "StrictHostKeyChecking=no",
+            "-o", "ConnectTimeout=5",
+            f"{GAME_SERVER_VM_USER}@{GAME_SERVER_VM_IP}",
+            "ss -tn"
+        ]
+        
         result = subprocess.run(
-            ["ss", "-tn"],
+            ssh_command,
             capture_output=True,
             text=True,
-            timeout=5
+            timeout=10
         )
+        
+        if result.returncode != 0:
+            log_message(f"Error connecting to game server VM: {result.stderr}")
+            return False
         
         connections_found = []
         
         for line in result.stdout.split("\n"):
             if "ESTAB" in line:
-                # Check if line contains any of our monitored IPs and ports
-                for ip in MONITOR_IPS:
-                    for port in MONITOR_PORTS:
-                        # Look for the IP:PORT combination in the line
-                        if f"{ip}:{port}" in line:
-                            connections_found.append(f"{ip}:{port}")
-                            log_message(f"Active connection detected: {ip}:{port}")
+                # Check if line contains any of our monitored ports
+                for port in MONITOR_PORTS:
+                    # Look for the port in the local address column
+                    if f":{port}" in line:
+                        connections_found.append(f"port {port}")
+                        log_message(f"Active connection detected on port {port}")
         
         if connections_found:
             log_message(f"Total active connections: {len(connections_found)}")
