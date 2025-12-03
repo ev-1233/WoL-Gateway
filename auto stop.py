@@ -27,6 +27,9 @@ MONITOR_PORTS = ["25565", "24454", "8100", "19132", "80", "8080", "2022"]  # Gam
 GAME_SERVER_VM_IP = "192.168.86.45"
 GAME_SERVER_VM_USER = "ev"  # Non-root user on game server VM
 
+# Minecraft server log path (adjust if needed)
+MINECRAFT_LOG_PATH = "/home/container/logs/latest.log"
+
 # Inactivity timeout in seconds (5 minutes = 300 seconds)
 INACTIVITY_TIMEOUT = 300
 
@@ -209,6 +212,81 @@ def check_network_connections():
         return False
 
 
+def check_game_servers_running():
+    """
+    Check if Minecraft servers are empty by looking at recent log messages.
+    Looks for EmptyServerStopper messages indicating server is empty.
+    If the message appears in last 30 lines, server is empty and can shutdown.
+    """
+    try:
+        # SSH into game server VM and check last 30 lines of Minecraft log
+        ssh_command = [
+            "ssh",
+            "-o", "StrictHostKeyChecking=no",
+            "-o", "ConnectTimeout=5",
+            f"{GAME_SERVER_VM_USER}@{GAME_SERVER_VM_IP}",
+            f"tail -n 30 {MINECRAFT_LOG_PATH} 2>/dev/null || echo 'LOG_NOT_FOUND'"
+        ]
+        
+        result = subprocess.run(
+            ssh_command,
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        
+        if result.returncode != 0 or "LOG_NOT_FOUND" in result.stdout:
+            log_message(f"Could not read Minecraft log at {MINECRAFT_LOG_PATH}")
+            # If we can't read the log, fall back to checking processes
+            return check_java_processes()
+        
+        log_output = result.stdout
+        
+        # Look for the EmptyServerStopper message in recent logs
+        if "Server empty -> shutdown" in log_output:
+            log_message("Minecraft server is EMPTY (EmptyServerStopper detected)")
+            return False  # Server is empty, safe to shutdown
+        else:
+            log_message("Minecraft server has players or recently active")
+            return True  # Server has players or was recently used
+        
+    except Exception as e:
+        log_message(f"Error checking Minecraft server logs: {e}")
+        return check_java_processes()  # Fallback
+
+
+def check_java_processes():
+    """
+    Fallback: Check if Java processes are running.
+    """
+    try:
+        ssh_command = [
+            "ssh",
+            "-o", "StrictHostKeyChecking=no",
+            "-o", "ConnectTimeout=5",
+            f"{GAME_SERVER_VM_USER}@{GAME_SERVER_VM_IP}",
+            "ps aux | grep -E 'java' | grep -v grep"
+        ]
+        
+        result = subprocess.run(
+            ssh_command,
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        
+        if result.returncode == 0 and result.stdout.strip():
+            log_message("Java processes running")
+            return True
+        else:
+            log_message("No Java processes running")
+            return False
+        
+    except Exception as e:
+        log_message(f"Error checking Java processes: {e}")
+        return False
+
+
 def shutdown_proxmox():
     """Print shutdown message instead of actually shutting down"""
     log_message("SHUTDOWN COMPLETE")
@@ -235,11 +313,16 @@ def main():
             # Check for active network connections (primary method)
             has_connections = check_network_connections()
             
+            # Also check if game servers are running (not sleeping)
+            servers_running = check_game_servers_running()
+            
             # Optional: Also check Pterodactyl API if needed
             # api_activity = check_any_active_connections()
-            # has_connections = has_connections or api_activity
             
-            if has_connections:
+            # Keep system alive if connections OR servers running
+            has_activity = has_connections or servers_running
+            
+            if has_activity:
                 # Reset timer if connections are detected
                 if inactive_time > 0:
                     log_message("Activity detected - resetting inactivity timer")
