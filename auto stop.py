@@ -28,7 +28,7 @@ GAME_SERVER_VM_IP = "192.168.86.45"
 GAME_SERVER_VM_USER = "ev"  # Non-root user on game server VM
 
 # Minecraft server log path (adjust if needed)
-MINECRAFT_LOG_PATH = "/home/container/logs/latest.log"
+MINECRAFT_LOG_PATH = "/var/lib/pterodactyl/volumes/9ba78b05-6302-4952-b337-b9719fcdfbdd/logs/latest.log"
 
 # Inactivity timeout in seconds (5 minutes = 300 seconds)
 INACTIVITY_TIMEOUT = 300
