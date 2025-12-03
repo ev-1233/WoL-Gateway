@@ -25,7 +25,7 @@ MONITOR_PORTS = ["25565", "24454", "8100", "19132"]  # Ports your game servers u
 
 # Game server VM SSH details (to check connections remotely)
 GAME_SERVER_VM_IP = "192.168.86.45"
-GAME_SERVER_VM_USER = "root"  # Change if different
+GAME_SERVER_VM_USER = "ev"  # Non-root user on game server VM
 
 # Inactivity timeout in seconds (5 minutes = 300 seconds)
 INACTIVITY_TIMEOUT = 300
