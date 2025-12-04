@@ -9,7 +9,7 @@ import subprocess
 import time
 import requests
 import json
-from datetime import datetime
+from datetime import datetime, time as dt_time
 
 # =================================================================
 #                         USER CONFIGURATION
@@ -48,6 +48,36 @@ LOG_FILE = "./auto_shutdown.log"
 # =================================================================
 #                         HELPER FUNCTIONS
 # =================================================================
+
+def is_within_monitoring_hours():
+    """
+    Check if current time is within monitoring hours.
+    Weekdays (Mon-Fri): 22:00-15:00 (10 PM to 3 PM next day)
+    Weekends (Sat-Sun): 21:30-07:30 (9:30 PM to 7:30 AM next day)
+    Returns True if within monitoring hours, False otherwise.
+    """
+    now = datetime.now()
+    current_time = now.time()
+    current_day = now.weekday()  # Monday=0, Sunday=6
+    
+    # Check if it's a weekday (Monday-Friday: 0-4)
+    if current_day < 5:  # Weekday
+        start_time = dt_time(22, 0)  # 10 PM
+        end_time = dt_time(15, 0)    # 3 PM
+    else:  # Weekend (Saturday-Sunday: 5-6)
+        start_time = dt_time(21, 30)  # 9:30 PM
+        end_time = dt_time(7, 30)     # 7:30 AM
+    
+    # Handle overnight monitoring (start > end means it crosses midnight)
+    if start_time > end_time:
+        # We're in monitoring window if current time is after start OR before end
+        in_monitoring_window = current_time >= start_time or current_time <= end_time
+    else:
+        # Normal case: monitoring window within same day
+        in_monitoring_window = start_time <= current_time <= end_time
+    
+    return in_monitoring_window
+
 
 def log_message(message):
     """Log messages with timestamp"""
@@ -305,11 +335,29 @@ def main():
     log_message(f"Check interval: {CHECK_INTERVAL} seconds")
     log_message(f"Monitoring IPs: {', '.join(MONITOR_IPS)}")
     log_message(f"Monitoring Ports: {', '.join(MONITOR_PORTS)}")
+    log_message("Monitoring Hours - Weekdays: 22:00-15:00, Weekends: 21:30-07:30")
+    
+    # Check and display current monitoring status
+    if is_within_monitoring_hours():
+        log_message("✓ Script is RUNNING - within monitoring hours")
+    else:
+        now = datetime.now()
+        current_day = "Weekday" if now.weekday() < 5 else "Weekend"
+        log_message(f"⏸ Script is PAUSED - outside monitoring hours ({current_day}: {now.strftime('%H:%M')})")
     
     inactive_time = 0
     
     while True:
         try:
+            # Check if we're within monitoring hours
+            if not is_within_monitoring_hours():
+                now = datetime.now()
+                current_day = "Weekday" if now.weekday() < 5 else "Weekend"
+                log_message(f"Outside monitoring hours ({current_day}: {now.strftime('%H:%M')}). Resetting timer and waiting...")
+                inactive_time = 0  # Reset timer when outside monitoring hours
+                time.sleep(CHECK_INTERVAL)
+                continue
+            
             # Check for active network connections (primary method)
             has_connections = check_network_connections()
             
