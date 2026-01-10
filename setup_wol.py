@@ -301,6 +301,32 @@ def load_current_config():
             pass
     return {}
 
+def check_docker_installed():
+    """
+    Check if Docker is installed (command exists).
+    
+    Returns:
+        bool: True if Docker is installed, False otherwise
+    """
+    try:
+        result = subprocess.run(['docker', '--version'], capture_output=True, text=True)
+        return result.returncode == 0
+    except FileNotFoundError:
+        return False
+
+def check_docker_running():
+    """
+    Check if Docker daemon is running.
+    
+    Returns:
+        bool: True if Docker daemon is running, False otherwise
+    """
+    try:
+        result = subprocess.run(['docker', 'ps'], capture_output=True, text=True)
+        return result.returncode == 0
+    except FileNotFoundError:
+        return False
+
 def check_docker_available():
     """
     Check if Docker is installed and the daemon is running.
@@ -308,16 +334,311 @@ def check_docker_available():
     Returns:
         bool: True if Docker is available and working, False otherwise
     """
+    return check_docker_installed() and check_docker_running()
+
+def install_docker():
+    """
+    Install Docker based on detected Linux distribution.
+    
+    Returns:
+        bool: True if installation was successful, False otherwise
+    """
+    print("\n" + "="*50)
+    print("      Docker Installation")
+    print("="*50)
+    
+    distro, pkg_manager = detect_linux_distro()
+    
+    if platform.system() != 'Linux':
+        print(f"\nAutomated Docker installation is only available for Linux.")
+        print(f"Please install Docker Desktop manually from: https://docs.docker.com/get-docker/")
+        return False
+    
+    print(f"\nDetected: {distro}")
+    print("\nThis will install Docker on your system.")
+    
+    # Check if running as root
+    needs_sudo = os.geteuid() != 0
+    
     try:
-        # Check if docker command exists
-        result = subprocess.run(['docker', '--version'], capture_output=True, text=True)
+        # Use official Docker installation script (works for most distros)
+        print("\nDownloading Docker installation script...")
+        print("This will use Docker's official installation script from get.docker.com\n")
+        
+        # Download and run the Docker installation script
+        install_cmd = 'curl -fsSL https://get.docker.com -o get-docker.sh && sh get-docker.sh'
+        
+        if needs_sudo:
+            full_cmd = ['sudo', 'sh', '-c', install_cmd]
+        else:
+            full_cmd = ['sh', '-c', install_cmd]
+        
+        result = subprocess.run(full_cmd)
+        
         if result.returncode != 0:
+            print("\n✗ Docker installation failed")
             return False
         
-        # Check if docker daemon is running by trying to list containers
-        result = subprocess.run(['docker', 'ps'], capture_output=True, text=True)
-        return result.returncode == 0
-    except FileNotFoundError:
+        # Add current user to docker group (if not root)
+        if needs_sudo:
+            try:
+                username = os.environ.get('USER', os.environ.get('SUDO_USER', ''))
+                if username:
+                    print(f"\nAdding user '{username}' to docker group...")
+                    subprocess.run(['sudo', 'usermod', '-aG', 'docker', username])
+                    print("\n⚠ Note: You may need to log out and back in for group changes to take effect.")
+            except Exception as e:
+                print(f"\nWarning: Could not add user to docker group: {e}")
+        
+        # Clean up installation script
+        try:
+            if os.path.exists('get-docker.sh'):
+                os.remove('get-docker.sh')
+        except:
+            pass
+        
+        print("\n✓ Docker installed successfully!")
+        return True
+        
+    except KeyboardInterrupt:
+        print("\n\n⚠ Installation cancelled by user")
+        return False
+    except Exception as e:
+        print(f"\n✗ Error during installation: {e}")
+        print("\nPlease install Docker manually:")
+        print("  https://docs.docker.com/engine/install/")
+        return False
+
+def detect_docker_installation_type():
+    """
+    Detect how Docker is installed on the system.
+    
+    Returns:
+        str: 'desktop', 'engine', 'snap', 'manual', or 'unknown'
+    """
+    # Check for Docker Desktop user service (most reliable method)
+    try:
+        result = subprocess.run(['systemctl', '--user', 'list-unit-files', 'docker-desktop.service'], 
+                              capture_output=True, text=True)
+        if 'docker-desktop.service' in result.stdout:
+            return 'desktop'
+    except:
+        pass
+    
+    # Check for Docker Desktop directory
+    docker_desktop_dirs = [
+        os.path.expanduser('~/.docker/desktop'),
+        '/opt/docker-desktop'
+    ]
+    for dir_path in docker_desktop_dirs:
+        if os.path.exists(dir_path):
+            return 'desktop'
+    
+    # Check for Docker Desktop command
+    if check_command_exists('docker-desktop'):
+        return 'desktop'
+    
+    # Check if installed via snap
+    try:
+        result = subprocess.run(['snap', 'list', 'docker'], capture_output=True, text=True)
+        if result.returncode == 0 and 'docker' in result.stdout:
+            return 'snap'
+    except:
+        pass
+    
+    # Check if systemd service exists (Docker Engine)
+    try:
+        result = subprocess.run(['systemctl', 'list-unit-files', 'docker.service'], 
+                              capture_output=True, text=True)
+        if 'docker.service' in result.stdout:
+            return 'engine'
+    except:
+        pass
+    
+    # Check if dockerd exists (manual installation)
+    if check_command_exists('dockerd'):
+        return 'manual'
+    
+    return 'unknown'
+
+def start_docker():
+    """
+    Start the Docker daemon, handling different installation methods.
+    
+    Returns:
+        bool: True if Docker was started successfully, False otherwise
+    """
+    print("\n" + "="*50)
+    print("      Starting Docker")
+    print("="*50)
+    
+    needs_sudo = os.geteuid() != 0
+    install_type = detect_docker_installation_type()
+    
+    print(f"\nDetected Docker installation type: {install_type}")
+    
+    try:
+        import time
+        
+        # Handle Docker Desktop
+        if install_type == 'desktop':
+            print("\nDocker Desktop detected.")
+            print("Starting Docker Desktop as user service...\n")
+            
+            # Try to start Docker Desktop using systemctl --user
+            cmd = ['systemctl', '--user', 'start', 'docker-desktop']
+            
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                print("Waiting for Docker Desktop to start...")
+                time.sleep(8)  # Docker Desktop takes longer to start
+                
+                # Verify it's running
+                if check_docker_running():
+                    print("\n✓ Docker Desktop started successfully!")
+                    
+                    # Enable Docker Desktop to start on login
+                    enable_cmd = ['systemctl', '--user', 'enable', 'docker-desktop']
+                    enable_result = subprocess.run(enable_cmd, capture_output=True, text=True)
+                    if enable_result.returncode == 0:
+                        print("✓ Docker Desktop configured to start on login")
+                    return True
+                else:
+                    print("\n⚠ Docker Desktop service started but daemon not responding yet")
+                    print("It may still be starting up. Waiting a bit longer...")
+                    time.sleep(5)
+                    
+                    if check_docker_running():
+                        print("✓ Docker Desktop is now running!")
+                        return True
+                    else:
+                        print("\n✗ Docker Desktop did not start properly")
+                        print("Try starting it manually from your applications menu")
+                        return False
+            else:
+                print(f"\n✗ Failed to start Docker Desktop: {result.stderr}")
+                print("\nYou can try starting it manually:")
+                print("  systemctl --user start docker-desktop")
+                print("  Or from your applications menu")
+                return False
+        
+        # Handle Snap installation
+        elif install_type == 'snap':
+            print("\nDocker installed via Snap detected.")
+            print("Starting Docker via Snap...\n")
+            
+            cmd = ['snap', 'start', 'docker']
+            if needs_sudo:
+                cmd = ['sudo'] + cmd
+            
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            if result.returncode == 0 or 'is not' in result.stderr:
+                # Snap might say it's already started
+                time.sleep(3)
+                if check_docker_running():
+                    print("\n✓ Docker started successfully!")
+                    return True
+                else:
+                    print("\n✗ Docker service started but daemon not responding")
+                    print("\nTry running: sudo snap restart docker")
+                    return False
+            else:
+                print(f"\n✗ Failed to start Docker: {result.stderr}")
+                return False
+        
+        # Handle Docker Engine (systemd)
+        elif install_type == 'engine':
+            print("\nDocker Engine detected. Starting via systemd...\n")
+            
+            cmd = ['systemctl', 'start', 'docker']
+            if needs_sudo:
+                cmd = ['sudo'] + cmd
+            
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                print("Waiting for Docker to start...")
+                time.sleep(3)
+                
+                if check_docker_running():
+                    print("\n✓ Docker started successfully!")
+                    
+                    # Enable Docker to start on boot
+                    enable_cmd = ['systemctl', 'enable', 'docker']
+                    if needs_sudo:
+                        enable_cmd = ['sudo'] + enable_cmd
+                    subprocess.run(enable_cmd, capture_output=True)
+                    print("✓ Docker configured to start on boot")
+                    return True
+                else:
+                    print("\n✗ Docker service started but daemon not responding")
+                    return False
+            else:
+                print(f"\n✗ Failed to start Docker: {result.stderr}")
+                return False
+        
+        # Handle manual installation
+        elif install_type == 'manual':
+            print("\nManual Docker installation detected.")
+            print("\nTo start Docker manually, you need to run:")
+            print("  sudo dockerd")
+            print("\nThis should be run in a separate terminal and left running.")
+            print("Or create a systemd service for Docker.")
+            return False
+        
+        # Unknown installation - try common methods
+        else:
+            print("\nCould not detect Docker installation method. Trying common approaches...\n")
+            
+            # Try systemctl
+            if check_command_exists('systemctl'):
+                print("Trying systemctl...")
+                cmd = ['systemctl', 'start', 'docker']
+                if needs_sudo:
+                    cmd = ['sudo'] + cmd
+                
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                
+                if result.returncode == 0:
+                    time.sleep(3)
+                    if check_docker_running():
+                        print("\n✓ Docker started successfully!")
+                        return True
+                else:
+                    print(f"systemctl failed: {result.stderr.strip()}")
+            
+            # Try service command
+            if check_command_exists('service'):
+                print("Trying service command...")
+                cmd = ['service', 'docker', 'start']
+                if needs_sudo:
+                    cmd = ['sudo'] + cmd
+                
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                
+                if result.returncode == 0:
+                    time.sleep(3)
+                    if check_docker_running():
+                        print("\n✓ Docker started successfully!")
+                        return True
+                else:
+                    print(f"service command failed: {result.stderr.strip()}")
+            
+            print("\n✗ Could not start Docker with any method")
+            print("\nDocker appears to be installed but may need to be reinstalled or configured.")
+            print("Try:")
+            print("  1. Reinstall Docker: curl -fsSL https://get.docker.com | sh")
+            print("  2. Install Docker Desktop: https://docs.docker.com/desktop/install/linux-install/")
+            print("  3. Check Docker documentation for your distribution")
+            return False
+            
+    except KeyboardInterrupt:
+        print("\n\n⚠ Cancelled by user")
+        return False
+    except Exception as e:
+        print(f"\n✗ Error starting Docker: {e}")
         return False
 
 def get_local_ip():
@@ -431,11 +752,119 @@ def main():
     print("      WOL Bridge Setup Script       ")
     print("====================================")
     
-    # Check if Docker is available
-    docker_available = check_docker_available()
+    # Check Docker status
+    docker_installed = check_docker_installed()
+    docker_running = check_docker_running()
+    docker_available = docker_installed and docker_running
     
+    # Handle Docker installation/startup prompts
+    if not docker_installed:
+        print("\n⚠ Docker is not installed.")
+        print("\nDocker provides the easiest deployment method with:")
+        print("  - No dependency issues")
+        print("  - Works on all Linux distributions")
+        print("  - Easy to manage and update")
+        print("  - Automatic restart on failure")
+        
+        # Retry loop for Docker installation
+        while True:
+            install_choice = input("\nWould you like to install Docker now? [Y/n]: ").strip().lower()
+            
+            if install_choice in ('', 'y', 'yes'):
+                if install_docker():
+                    # Check if Docker is now running
+                    if check_docker_running():
+                        docker_available = True
+                        docker_installed = True
+                        docker_running = True
+                        break
+                    else:
+                        # Docker installed but not running, try to start it
+                        print("\nDocker is installed but not running.")
+                        
+                        # Retry loop for starting Docker after installation
+                        while True:
+                            start_choice = input("Would you like to start Docker now? [Y/n]: ").strip().lower()
+                            
+                            if start_choice in ('', 'y', 'yes'):
+                                if start_docker():
+                                    docker_available = True
+                                    docker_running = True
+                                    break
+                                else:
+                                    print("\n⚠ Failed to start Docker.")
+                                    print("\nPossible solutions:")
+                                    print("  1. Reboot your system (some Docker installations require a reboot)")
+                                    print("  2. Check if Docker service exists: systemctl status docker")
+                                    print("  3. Try starting manually: sudo systemctl start docker")
+                                    
+                                    retry_start = input("\nWould you like to retry starting Docker? [y/N]: ").strip().lower()
+                                    if retry_start in ('y', 'yes'):
+                                        continue
+                                    else:
+                                        print("\nFalling back to direct installation mode.")
+                                        docker_available = False
+                                        break
+                            else:
+                                print("\nFalling back to direct installation mode.")
+                                docker_available = False
+                                break
+                        break
+                else:
+                    print("\n⚠ Docker installation failed.")
+                    print("\nPossible solutions:")
+                    print("  1. Check your internet connection")
+                    print("  2. Ensure you have curl installed: sudo apt install curl")
+                    print("  3. Try installing manually: https://docs.docker.com/engine/install/")
+                    
+                    retry_install = input("\nWould you like to retry installing Docker? [y/N]: ").strip().lower()
+                    if retry_install in ('y', 'yes'):
+                        continue
+                    else:
+                        print("\nFalling back to direct installation mode.")
+                        docker_available = False
+                        break
+            else:
+                print("\nSkipping Docker installation. Using direct installation mode.")
+                docker_available = False
+                break
+    
+    elif docker_installed and not docker_running:
+        print("\n⚠ Docker is installed but not running.")
+        print("\nFor the best deployment experience, Docker should be running.")
+        
+        # Retry loop for starting Docker
+        while True:
+            start_choice = input("\nWould you like to start Docker now? [Y/n]: ").strip().lower()
+            
+            if start_choice in ('', 'y', 'yes'):
+                if start_docker():
+                    docker_available = True
+                    docker_running = True
+                    break
+                else:
+                    print("\n⚠ Failed to start Docker.")
+                    print("\nPossible solutions:")
+                    print("  1. Check Docker service status: systemctl status docker")
+                    print("  2. Check Docker logs: journalctl -u docker")
+                    print("  3. Try reinstalling Docker")
+                    print("  4. Reboot your system")
+                    
+                    retry_start = input("\nWould you like to retry starting Docker? [y/N]: ").strip().lower()
+                    if retry_start in ('y', 'yes'):
+                        continue
+                    else:
+                        print("\nFalling back to direct installation mode.")
+                        docker_available = False
+                        break
+            else:
+                print("\nFalling back to direct installation mode.")
+                docker_available = False
+                break
+    
+    # Now present deployment options
     if docker_available:
-        print("\n✓ Docker detected and running!")
+        print("\n✓ Docker is ready!")
         print("\n" + "="*50)
         print("  Deployment Options:")
         print("="*50)
@@ -458,9 +887,7 @@ def main():
             # First, configure settings
             print("\nLet's configure your WOL Gateway settings first.\n")
     else:
-        print("\n⚠ Docker not detected or not running.")
-        print("For the best experience, install Docker Desktop or start the Docker daemon.")
-        print("\nFalling back to direct installation mode...")
+        print("\n--- Direct Installation Mode ---")
         choice = '2'
     
     print("\n====================================")
