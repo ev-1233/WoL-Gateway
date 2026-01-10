@@ -176,15 +176,22 @@ def install_dependencies():
             print("  Please install wakeonlan manually for your system")
             return False
         
-        # Build installation command based on package manager
+        # Build installation commands - some distros have different package names
+        # Format: package_manager: [(package_name, [command]), ...]
         install_commands = {
-            'apt': ['apt-get', 'install', '-y', 'wakeonlan'],
-            'dnf': ['dnf', 'install', '-y', 'wakeonlan'],
-            'yum': ['yum', 'install', '-y', 'wakeonlan'],
-            'pacman': ['pacman', '-S', '--noconfirm', 'wakeonlan'],
-            'zypper': ['zypper', '--non-interactive', 'install', 'wakeonlan'],
-            'apk': ['apk', 'add', 'wakeonlan'],
-            'pkg': ['pkg', 'install', '-y', 'wakeonlan']
+            'apt': [('wakeonlan', ['apt-get', 'install', '-y', 'wakeonlan'])],
+            'dnf': [
+                ('wakeonlan', ['dnf', 'install', '-y', 'wakeonlan']),
+                ('wol', ['dnf', 'install', '-y', 'wol'])  # Alternative on Fedora/RHEL
+            ],
+            'yum': [
+                ('wakeonlan', ['yum', 'install', '-y', 'wakeonlan']),
+                ('wol', ['yum', 'install', '-y', 'wol'])  # Alternative on RHEL/CentOS
+            ],
+            'pacman': [('wakeonlan', ['pacman', '-S', '--noconfirm', 'wakeonlan'])],
+            'zypper': [('wakeonlan', ['zypper', '--non-interactive', 'install', 'wakeonlan'])],
+            'apk': [('wakeonlan', ['apk', 'add', 'wakeonlan'])],
+            'pkg': [('wakeonlan', ['pkg', 'install', '-y', 'wakeonlan'])]
         }
         
         if pkg_manager not in install_commands:
@@ -192,29 +199,61 @@ def install_dependencies():
             print("  Please install wakeonlan manually")
             return False
         
-        cmd = install_commands[pkg_manager]
-        
-        # Add sudo if needed (except for Termux pkg)
-        if needs_sudo and pkg_manager != 'pkg':
-            cmd = ['sudo'] + cmd
-        
-        print(f"  Installing wakeonlan: {' '.join(cmd)}")
-        
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            
-            if result.returncode == 0 and check_command_exists('wakeonlan'):
-                print("  ✓ wakeonlan installed successfully")
+        # Try each package option for this package manager
+        installed = False
+        for pkg_name, cmd in install_commands[pkg_manager]:
+            # Add sudo if needed (except for Termux pkg)
+            if needs_sudo and pkg_manager != 'pkg':
+                full_cmd = ['sudo'] + cmd
             else:
-                print(f"  ✗ Failed to install wakeonlan")
-                if result.stderr:
-                    print(f"  Error: {result.stderr}")
-                print(f"\n  Please run manually: {' '.join(cmd)}")
-                return False
+                full_cmd = cmd
+            
+            print(f"  Trying to install '{pkg_name}': {' '.join(full_cmd)}")
+            
+            try:
+                result = subprocess.run(full_cmd, capture_output=True, text=True)
                 
-        except Exception as e:
-            print(f"  ✗ Error installing wakeonlan: {e}")
-            print(f"  Please run manually: {' '.join(cmd)}")
+                if result.returncode == 0 and check_command_exists('wakeonlan'):
+                    print(f"  ✓ wakeonlan installed successfully (as '{pkg_name}' package)")
+                    installed = True
+                    break
+                else:
+                    print(f"  ✗ Package '{pkg_name}' not available or installation failed")
+                    
+            except Exception as e:
+                print(f"  ✗ Error trying to install '{pkg_name}': {e}")
+        
+        # If none of the system packages worked, try pip as fallback
+        if not installed:
+            print("\n  System packages failed. Trying Python package 'wakeonlan'...")
+            try:
+                result = subprocess.run(
+                    [sys.executable, '-m', 'pip', 'install', '--user', 'wakeonlan'],
+                    capture_output=True,
+                    text=True
+                )
+                
+                if result.returncode == 0:
+                    # Check if the wakeonlan command is now available
+                    # pip installs it to ~/.local/bin usually
+                    if check_command_exists('wakeonlan'):
+                        print("  ✓ wakeonlan installed successfully via pip")
+                        installed = True
+                    else:
+                        print("  ✓ wakeonlan Python package installed")
+                        print("  ⚠ Note: You may need to add ~/.local/bin to your PATH")
+                        print("    Or use: python3 -m wakeonlan <MAC_ADDRESS>")
+                        installed = True
+                        
+            except Exception as e:
+                print(f"  ✗ Error installing wakeonlan via pip: {e}")
+        
+        if not installed:
+            print("\n  ✗ Could not install wakeonlan automatically")
+            print("\n  Manual installation options:")
+            print("    1. Fedora/RHEL (with EPEL): sudo dnf install epel-release && sudo dnf install wol")
+            print("    2. Python package: pip3 install --user wakeonlan")
+            print("    3. Build from source: https://github.com/jpoliv/wakeonlan")
             return False
     
     print("\n" + "="*50)

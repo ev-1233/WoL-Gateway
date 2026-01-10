@@ -182,6 +182,52 @@ WAITING_PAGE_HTML = f"""
 </html>
 """
 
+def find_wakeonlan_command():
+    """
+    Finds the wakeonlan command in various possible locations.
+    
+    When running with sudo, the PATH may not include user's local bin directories,
+    so we need to check multiple possible locations.
+    
+    Returns:
+        str or None: Full path to wakeonlan command, or None if not found
+    """
+    # Possible locations for wakeonlan command
+    possible_paths = [
+        'wakeonlan',  # Try PATH first
+        '/usr/bin/wakeonlan',
+        '/usr/local/bin/wakeonlan',
+        '/bin/wakeonlan',
+    ]
+    
+    # Also check user's local bin (get the actual user even when running with sudo)
+    if 'SUDO_USER' in os.environ:
+        # Running with sudo, get the real user's home directory
+        sudo_user = os.environ['SUDO_USER']
+        user_local_bin = f'/home/{sudo_user}/.local/bin/wakeonlan'
+        possible_paths.insert(1, user_local_bin)
+    else:
+        # Not running with sudo, check current user's local bin
+        user_home = os.path.expanduser('~')
+        user_local_bin = os.path.join(user_home, '.local', 'bin', 'wakeonlan')
+        possible_paths.insert(1, user_local_bin)
+    
+    # Try each path
+    for cmd_path in possible_paths:
+        try:
+            # Check if it's just a command name (try 'which')
+            if '/' not in cmd_path:
+                result = subprocess.run(['which', cmd_path], capture_output=True, text=True)
+                if result.returncode == 0:
+                    return cmd_path
+            # Check if it's a full path that exists
+            elif os.path.isfile(cmd_path) and os.access(cmd_path, os.X_OK):
+                return cmd_path
+        except Exception:
+            continue
+    
+    return None
+
 @app.route('/wake', methods=['GET'])
 def wake_server_and_redirect():
     """
@@ -201,28 +247,35 @@ def wake_server_and_redirect():
     # =================================================================
     # Step 1: Send the Wake-on-LAN Magic Packet
     # =================================================================
+    # Find the wakeonlan command (may be in different locations)
+    wakeonlan_cmd = find_wakeonlan_command()
+    
+    if not wakeonlan_cmd:
+        error_message = "WOL Error: 'wakeonlan' command not found. Please install it:\n"
+        error_message += "  Debian/Ubuntu: sudo apt-get install wakeonlan\n"
+        error_message += "  Fedora/RHEL: sudo dnf install wol\n"
+        error_message += "  Or via pip: pip3 install --user wakeonlan"
+        print(f"[{time.strftime('%H:%M:%S')}] {error_message}")
+        return error_message, 500
+    
     # Uses the 'wakeonlan' command-line utility to send the magic packet
     try:
         # Execute: wakeonlan <MAC_ADDRESS>
         # check=True: raises CalledProcessError if command fails
         # capture_output=True: captures stdout/stderr for error reporting
-        subprocess.run(['wakeonlan', WOL_MAC_ADDRESS], check=True, capture_output=True)
-        print(f"[{time.strftime('%H:%M:%S')}] WOL Magic Packet sent to {WOL_MAC_ADDRESS}")
+        subprocess.run([wakeonlan_cmd, WOL_MAC_ADDRESS], check=True, capture_output=True)
+        print(f"[{time.strftime('%H:%M:%S')}] WOL Magic Packet sent to {WOL_MAC_ADDRESS} using {wakeonlan_cmd}")
     
     except subprocess.CalledProcessError as e:
         # Command executed but failed (non-zero exit code)
         # This could happen if MAC address format is invalid
-        error_message = f"WOL Error: Could not send packet. Check MAC address and 'wakeonlan' install: {e.stderr.decode()}"
+        error_message = f"WOL Error: Could not send packet. Check MAC address: {e.stderr.decode()}"
         print(f"[{time.strftime('%H:%M:%S')}] {error_message}")
         return error_message, 500
     
-    except FileNotFoundError:
-        # The 'wakeonlan' command is not installed on the system
-        # Installation varies by OS:
-        #   - Termux: pkg install wakeonlan
-        #   - Debian/Ubuntu: apt install wakeonlan
-        #   - macOS: brew install wakeonlan
-        error_message = "WOL Error: 'wakeonlan' command not found. Did you run 'pkg install wakeonlan' in Termux?"
+    except Exception as e:
+        # Any other error (shouldn't happen since we checked for command existence)
+        error_message = f"WOL Error: Unexpected error: {str(e)}"
         print(f"[{time.strftime('%H:%M:%S')}] {error_message}")
         return error_message, 500
 
