@@ -301,25 +301,55 @@ def wake_server_and_redirect():
 @app.route('/')
 def home():
     """
-    Root endpoint - informational page explaining how to use the gateway.
+    Root endpoint - landing page with button to start the server.
     
     This is displayed when users visit http://<server>:<port>/
-    It provides instructions and a test link to the /wake endpoint.
+    It provides a button to wake the server, matching the design of the /wake page.
     
     Returns:
-        str: HTML content with usage instructions
+        Response: HTML landing page
     """
     
-    # Construct the wake URL that users should access
-    # Replace <Your-Public-IP-or-Domain> with your actual external address
-    wake_link = f"http://<Your-Public-IP-or-Domain>/wake"
-    
-    return f"""
-    <h1>WOL Gateway Running</h1>
-    <p>The Python/Flask app is active on port 5000. </p>
-    <p>To wake the server, please direct users to the <strong>/wake</strong> endpoint: <a href="/wake">Click here to test /wake</a></p>
-    <p>Ensure your router's port forwarding is mapping your external access to this phone's IP on port 5000.</p>
+    landing_page_html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Server Gateway</title>
+    <style>
+        body {{ font-family: sans-serif; text-align: center; margin-top: 50px; background-color: #f0f0f0; }}
+        .container {{ background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); display: inline-block; }}
+        h1 {{ color: #333; }}
+        .button {{ 
+            background-color: #3498db; 
+            color: white; 
+            padding: 15px 32px; 
+            text-align: center; 
+            text-decoration: none; 
+            display: inline-block; 
+            font-size: 18px; 
+            margin: 20px 2px; 
+            cursor: pointer; 
+            border: none; 
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }}
+        .button:hover {{ background-color: #2980b9; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🖥️ Server Gateway</h1>
+        <p>Click the button below to start the server.</p>
+        <a href="/wake" class="button">Start Server</a>
+        <p style="color: #666; font-size: 14px; margin-top: 20px;">
+            The server will be woken and you'll be redirected in approximately {WAIT_TIME_SECONDS} seconds.
+        </p>
+    </div>
+</body>
+</html>
     """
+    
+    return Response(landing_page_html, mimetype='text/html')
 
 # =================================================================
 #                     APPLICATION ENTRY POINT
