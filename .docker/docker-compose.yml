@@ -4,9 +4,12 @@ services:
       context: ..
       dockerfile: .docker/Dockerfile
     container_name: wol-gateway
-    # Map container port to host port (host:container)
+    # Use privileged mode for Docker Desktop to access host network for WOL
+    # Docker Desktop's network_mode: host doesn't work on Linux (runs in VM)
+    privileged: true
+    # Map container port to host port
     ports:
-      - "500:500"
+      - "5000:5000"
     # Mount config file so you can update it without rebuilding
     volumes:
       - ../WOL_Brige.config:/app/WOL_Brige.config:ro

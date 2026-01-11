@@ -1,9 +1,9 @@
 # Use Python 3.13 slim image for smaller size
 FROM python:3.13-slim
 
-# Install system dependencies (wakeonlan)
+# Install system dependencies (wakeonlan and iproute2 for host network access)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends wakeonlan && \
+    apt-get install -y --no-install-recommends wakeonlan iproute2 && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
@@ -17,7 +17,7 @@ COPY wol_gatway.py .
 COPY WOL_Brige.config .
 
 # Expose the port (will be configurable via config file)
-EXPOSE 500
+EXPOSE 5000
 
 # Note: Running as root because we're using host networking and need to bind to privileged ports
 # If you change to a port >= 1024, you can uncomment the lines below to run as non-root

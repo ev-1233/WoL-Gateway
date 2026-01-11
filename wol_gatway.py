@@ -52,7 +52,7 @@ def load_config():
         ValueError: If config is invalid or missing required fields
     """
     # Define all required configuration keys
-    required_keys = ("WOL_MAC_ADDRESS", "SITE_URL", "WAIT_TIME_SECONDS", "PORT")
+    required_keys = ("WOL_MAC_ADDRESS", "BROADCAST_ADDRESS", "SITE_URL", "WAIT_TIME_SECONDS", "PORT")
 
     # Check if configuration file exists
     if not os.path.exists(CONFIG_FILE):
@@ -74,6 +74,8 @@ def load_config():
 
     # Extract and validate MAC address
     mac = str(user_config["WOL_MAC_ADDRESS"]).strip()
+    # Extract and validate broadcast address
+    broadcast = str(user_config["BROADCAST_ADDRESS"]).strip()
     # Extract and validate site URL
     site = str(user_config["SITE_URL"]).strip()
     # Extract wait time (will validate as integer below)
@@ -82,6 +84,10 @@ def load_config():
     # Validate MAC address is not empty
     if not mac:
         raise ValueError("WOL_MAC_ADDRESS must be set in the config file.")
+    
+    # Validate broadcast address is not empty
+    if not broadcast:
+        raise ValueError("BROADCAST_ADDRESS must be set in the config file.")
     
     # Validate site URL is not empty
     if not site:
@@ -114,6 +120,7 @@ def load_config():
     # Return validated configuration dictionary
     return {
         "WOL_MAC_ADDRESS": mac,
+        "BROADCAST_ADDRESS": broadcast,
         "SITE_URL": site,
         "WAIT_TIME_SECONDS": wait,
         "PORT": port,
@@ -128,15 +135,19 @@ config = load_config()
 #    This is the hardware address of the network interface to wake
 WOL_MAC_ADDRESS = config["WOL_MAC_ADDRESS"]
 
-# 2. The final URL of your site (e.g., "http://panel.yourdomain.com")
+# 2. Broadcast Address for sending WOL packets (e.g., "255.255.255.255" or "192.168.1.255")
+#    This determines where the magic packet will be broadcast on the network
+BROADCAST_ADDRESS = config["BROADCAST_ADDRESS"]
+
+# 3. The final URL of your site (e.g., "http://panel.yourdomain.com")
 #    Users will be redirected here after the wait time elapses
 SITE_URL = config["SITE_URL"]
 
-# 3. Time (in seconds) to wait for the server to boot up
+# 4. Time (in seconds) to wait for the server to boot up
 #    Should be long enough for the server to fully start and become accessible
 WAIT_TIME_SECONDS = config["WAIT_TIME_SECONDS"]
 
-# 4. Port for Flask to run on (e.g., 5000, 8080, 3000)
+# 5. Port for Flask to run on (e.g., 5000, 8080, 3000)
 #    Remember to forward this port in your router if accessing externally
 PORT = config["PORT"]
 
@@ -175,7 +186,7 @@ WAITING_PAGE_HTML = f"""
         <h1>🚀 Starting Server...</h1>
         <div class="loader"></div>
         <p>Sending Wake-on-LAN signal. Please wait approximately <strong>{WAIT_TIME_SECONDS} seconds</strong>.</p>
-        <p>You will be automatically redirected to your Pterodactyl Panel.</p>
+        <p>You will be automatically redirected to your domain.</p>
         <p>If the page fails to load, the server may still be booting. Please try refreshing.</p>
     </div>
 </body>
@@ -260,11 +271,12 @@ def wake_server_and_redirect():
     
     # Uses the 'wakeonlan' command-line utility to send the magic packet
     try:
-        # Execute: wakeonlan <MAC_ADDRESS>
+        # Execute: wakeonlan -i <BROADCAST_ADDRESS> <MAC_ADDRESS>
+        # -i flag specifies the broadcast address to send the packet to
         # check=True: raises CalledProcessError if command fails
         # capture_output=True: captures stdout/stderr for error reporting
-        subprocess.run([wakeonlan_cmd, WOL_MAC_ADDRESS], check=True, capture_output=True)
-        print(f"[{time.strftime('%H:%M:%S')}] WOL Magic Packet sent to {WOL_MAC_ADDRESS} using {wakeonlan_cmd}")
+        subprocess.run([wakeonlan_cmd, '-i', BROADCAST_ADDRESS, WOL_MAC_ADDRESS], check=True, capture_output=True)
+        print(f"[{time.strftime('%H:%M:%S')}] WOL Magic Packet sent to {WOL_MAC_ADDRESS} via {BROADCAST_ADDRESS} using {wakeonlan_cmd}")
     
     except subprocess.CalledProcessError as e:
         # Command executed but failed (non-zero exit code)
@@ -321,7 +333,8 @@ if __name__ == '__main__':
     #               Set to True during development for auto-reload and detailed errors
     
     print(f"[{time.strftime('%H:%M:%S')}] Flask App starting on http://0.0.0.0:{PORT}")
-    print(f"[{time.strftime('%H:%M:%S')}] Waking MAC: {WOL_MAC_ADDRESS}, Redirect URL: {SITE_URL}")
+    print(f"[{time.strftime('%H:%M:%S')}] Waking MAC: {WOL_MAC_ADDRESS} via Broadcast: {BROADCAST_ADDRESS}")
+    print(f"[{time.strftime('%H:%M:%S')}] Redirect URL: {SITE_URL}")
     print(f"[{time.strftime('%H:%M:%S')}] Access the /wake endpoint to trigger WOL")
     
     app.run(host='0.0.0.0', port=PORT, debug=False)

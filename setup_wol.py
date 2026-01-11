@@ -85,7 +85,7 @@ def detect_linux_distro():
 
 def check_command_exists(command):
     """
-    Check if a command exists on the system.
+    Check if a command exists on the system .
     
     Args:
         command (str): Command name to check
@@ -929,7 +929,37 @@ def main():
             print("Invalid MAC address format. Please use XX:XX:XX:XX:XX:XX.")
 
     # =================================================================
-    # 2. Prompt for Site URL (Final Redirect Destination)
+    # 2. Prompt for Broadcast Address
+    # =================================================================
+    # The broadcast address is used to send the WOL magic packet to the network.
+    # Common options:
+    #   - 255.255.255.255 (global broadcast, works in most cases)
+    #   - 192.168.1.255 (for 192.168.1.0/24 network)
+    #   - Your network's specific broadcast address
+    default_broadcast = current_config.get("BROADCAST_ADDRESS", "255.255.255.255")
+    
+    while True:
+        prompt_broadcast = "Enter Broadcast Address (or press Enter for default)"
+        if default_broadcast:
+            prompt_broadcast += f" [{default_broadcast}]"
+        prompt_broadcast += ": "
+        
+        broadcast_input = input(prompt_broadcast).strip()
+        
+        # Use default if user presses Enter without input
+        if not broadcast_input and default_broadcast:
+            broadcast = default_broadcast
+            break
+        elif broadcast_input:
+            broadcast = broadcast_input
+            break
+        else:
+            # Use default if empty
+            broadcast = "255.255.255.255"
+            break
+
+    # =================================================================
+    # 3. Prompt for Site URL (Final Redirect Destination)
     # =================================================================
     # This is the URL where users will be redirected after the server wakes up.
     # Example: http://panel.yourdomain.com or http://192.168.1.100:8080
@@ -953,7 +983,7 @@ def main():
             print("Error: Site URL cannot be empty.")
 
     # =================================================================
-    # 3. Prompt for Wait Time (Server Boot Duration)
+    # 4. Prompt for Wait Time (Server Boot Duration)
     # =================================================================
     # This is how long (in seconds) the waiting page will display before
     # automatically redirecting to the Site URL. Should be long enough for
@@ -991,7 +1021,7 @@ def main():
         break
 
     # =================================================================
-    # 4. Prompt for Flask Port Number
+    # 5. Prompt for Flask Port Number
     # =================================================================
     # The port number that the Flask web server will listen on.
     # Common choices: 5000 (Flask default), 8080, 3000, or any available port.
@@ -1034,6 +1064,7 @@ def main():
     # Create the configuration dictionary with all collected values
     new_config = {
         "WOL_MAC_ADDRESS": mac,
+        "BROADCAST_ADDRESS": broadcast,
         "SITE_URL": url,
         "WAIT_TIME_SECONDS": wait,
         "PORT": port
@@ -1047,6 +1078,7 @@ def main():
         # Display success message with all configured values
         print(f"\n[SUCCESS] Configuration saved to '{CONFIG_FILE}'.")
         print(f"Server MAC: {mac}")
+        print(f"Broadcast Address: {broadcast}")
         print(f"Redirect URL: {url}")
         print(f"Wait Time: {wait}s")
         print(f"Port: {port}")
