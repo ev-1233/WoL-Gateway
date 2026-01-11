@@ -46,7 +46,7 @@ def detect_linux_distro():
             
         # Detect distribution
         if 'ubuntu' in os_release or 'debian' in os_release or 'mint' in os_release:
-            return ('Debian/Ubuntu', 'apt')
+            return ('Debian/Ubuntu', 'aabout:blank#blockedpt')
         elif 'fedora' in os_release:
             return ('Fedora', 'dnf')
         elif 'rhel' in os_release or 'red hat' in os_release or 'centos' in os_release:
@@ -723,8 +723,8 @@ def setup_with_docker():
                 local_ip = get_local_ip()
                 
                 print("\nAccess it at:")
-                print(f"  - Local:   http://localhost:{port}/wake")
-                print(f"  - Network: http://{local_ip}:{port}/wake")
+                print(f"  - Local:   http://localhost:{port}")
+                print(f"  - Network: http://{local_ip}:{port}")
                 print("\nUseful commands:")
                 print("  View logs:    cd .docker && docker compose logs -f")
                 print("  Stop:         cd .docker && docker compose down")
@@ -897,135 +897,124 @@ def main():
     # Load any existing configuration to use as defaults
     current_config = load_current_config()
     
-    # Extract defaults from current file or use hardcoded fallbacks
-    default_mac = current_config.get("WOL_MAC_ADDRESS", "")
-    default_url = current_config.get("SITE_URL", "")
-    default_wait = current_config.get("WAIT_TIME_SECONDS")
+    # Extract port default (shared across all servers)
     default_port = current_config.get("PORT", 5000)  # Default port is 5000
-
-    # =================================================================
-    # 1. Prompt for Server MAC Address
-    # =================================================================
-    # The MAC address is required for sending the Wake-on-LAN magic packet
-    # to the target server's network interface card.
-    while True:
-        prompt_mac = f"Enter Server MAC Address (e.g., 00:11:22:33:44:55)"
-        # Show current value in brackets if it exists
-        if default_mac:
-            prompt_mac += f" [{default_mac}]"
-        prompt_mac += ": "
-        
-        mac = input(prompt_mac).strip()
-        
-        # If user presses Enter without input, use the default
-        if not mac and default_mac:
-            mac = default_mac
-            break
-        
-        # Validate the MAC address format
-        if validate_mac(mac):
-            break
-        else:
-            print("Invalid MAC address format. Please use XX:XX:XX:XX:XX:XX.")
-
-    # =================================================================
-    # 2. Prompt for Broadcast Address
-    # =================================================================
-    # The broadcast address is used to send the WOL magic packet to the network.
-    # Common options:
-    #   - 255.255.255.255 (global broadcast, works in most cases)
-    #   - 192.168.1.255 (for 192.168.1.0/24 network)
-    #   - Your network's specific broadcast address
-    default_broadcast = current_config.get("BROADCAST_ADDRESS", "255.255.255.255")
     
-    while True:
-        prompt_broadcast = "Enter Broadcast Address (or press Enter for default)"
-        if default_broadcast:
-            prompt_broadcast += f" [{default_broadcast}]"
-        prompt_broadcast += ": "
-        
-        broadcast_input = input(prompt_broadcast).strip()
-        
-        # Use default if user presses Enter without input
-        if not broadcast_input and default_broadcast:
-            broadcast = default_broadcast
-            break
-        elif broadcast_input:
-            broadcast = broadcast_input
-            break
-        else:
-            # Use default if empty
-            broadcast = "255.255.255.255"
-            break
-
+    # Extract existing servers if any
+    existing_servers = current_config.get("SERVERS", [])
+    
     # =================================================================
-    # 3. Prompt for Site URL (Final Redirect Destination)
+    # Collect Server Configurations
     # =================================================================
-    # This is the URL where users will be redirected after the server wakes up.
-    # Example: http://panel.yourdomain.com or http://192.168.1.100:8080
-    while True:
-        prompt_url = "Enter Site URL"
-        if default_url:
-            prompt_url += f" [{default_url}]"
-        prompt_url += ": "
+    servers = []
+    server_number = 1
+    
+    # If we have existing servers, ask if user wants to keep or reconfigure
+    if existing_servers:
+        print(f"\nFound {len(existing_servers)} existing server(s):")
+        for idx, srv in enumerate(existing_servers, 1):
+            print(f"  {idx}. {srv.get('NAME', 'Unnamed')} - {srv.get('WOL_MAC_ADDRESS', 'N/A')}")
         
-        url_input = input(prompt_url).strip()
-        
-        # Use default if user presses Enter without input
-        if not url_input and default_url:
-            url = default_url
-            break
-        elif url_input:
-            url = url_input
-            break
+        keep_choice = input("\nKeep existing servers? [Y/n]: ").strip().lower()
+        if keep_choice in ('', 'y', 'yes'):
+            servers = existing_servers.copy()
+            server_number = len(servers) + 1
+            print("Existing servers kept. You can add more servers below.\n")
         else:
-            # URL cannot be empty - keep prompting
+            print("Starting fresh configuration...\n")
+    
+    # Loop to add servers
+    while True:
+        print(f"\n{'='*50}")
+        print(f"      Server #{server_number} Configuration")
+        print(f"{'='*50}\n")
+        
+        # =================================================================
+        # 1. Prompt for Server Name
+        # =================================================================
+        while True:
+            server_name = input(f"Enter Server Name (e.g., Main Server, NAS, etc.): ").strip()
+            if server_name:
+                break
+            print("Error: Server name cannot be empty.")
+        
+        # =================================================================
+        # 2. Prompt for Server MAC Address
+        # =================================================================
+        while True:
+            mac = input(f"Enter MAC Address (e.g., 00:11:22:33:44:55): ").strip()
+            if validate_mac(mac):
+                break
+            print("Invalid MAC address format. Please use XX:XX:XX:XX:XX:XX.")
+        
+        # =================================================================
+        # 3. Prompt for Broadcast Address
+        # =================================================================
+        while True:
+            broadcast_input = input("Enter Broadcast Address [255.255.255.255]: ").strip()
+            if not broadcast_input:
+                broadcast = "255.255.255.255"
+                break
+            else:
+                broadcast = broadcast_input
+                break
+        
+        # =================================================================
+        # 4. Prompt for Site URL
+        # =================================================================
+        while True:
+            url = input(f"Enter Site URL (e.g., http://192.168.1.100:8080): ").strip()
+            if url:
+                break
             print("Error: Site URL cannot be empty.")
-
-    # =================================================================
-    # 4. Prompt for Wait Time (Server Boot Duration)
-    # =================================================================
-    # This is how long (in seconds) the waiting page will display before
-    # automatically redirecting to the Site URL. Should be long enough for
-    # your server to fully boot up and become accessible.
-    while True:
-        prompt_wait = "Enter Wait Time in Seconds"
-        if default_wait is not None:
-            prompt_wait += f" [{default_wait}]"
-        prompt_wait += ": "
-
-        wait_input = input(prompt_wait).strip()
-
-        # Handle empty input (use default if available)
-        if not wait_input:
-            if default_wait is None:
-                print("Wait time is required.")
-                continue
-            try:
-                wait = int(default_wait)
-            except Exception:
-                print("Stored wait time is invalid; please enter a number.")
-                continue
-        else:
-            # Parse user input as integer
+        
+        # =================================================================
+        # 5. Prompt for Wait Time
+        # =================================================================
+        while True:
+            wait_input = input("Enter Wait Time in Seconds [60]: ").strip()
+            if not wait_input:
+                wait = 60
+                break
             try:
                 wait = int(wait_input)
+                if wait <= 0:
+                    print("Please enter a number greater than zero.")
+                    continue
+                break
             except ValueError:
-                print("Please enter a valid integer number.")
-                continue
-
-        # Validate that wait time is positive
-        if wait <= 0:
-            print("Please enter a number greater than zero.")
+                print("Invalid input. Please enter a whole number.")
+        
+        # Add this server to the list
+        servers.append({
+            "NAME": server_name,
+            "WOL_MAC_ADDRESS": mac,
+            "BROADCAST_ADDRESS": broadcast,
+            "SITE_URL": url,
+            "WAIT_TIME_SECONDS": wait
+        })
+        
+        print(f"\n✓ Server '{server_name}' added!")
+        
+        # Ask if user wants to add another server
+        add_another = input("\nAdd another server? [y/N]: ").strip().lower()
+        if add_another in ('y', 'yes'):
+            server_number += 1
             continue
-        break
-
+        else:
+            break
+    
+    # Ensure at least one server was configured
+    if not servers:
+        print("\nError: At least one server must be configured.")
+        return
+    
     # =================================================================
-    # 5. Prompt for Flask Port Number
+    # Prompt for Flask Port Number (Global Setting)
     # =================================================================
-    # The port number that the Flask web server will listen on.
-    # Common choices: 5000 (Flask default), 8080, 3000, or any available port.
-    # Remember to configure your router's port forwarding to match this port.
+    print(f"\n{'='*50}")
+    print("      Global Settings")
+    print(f"{'='*50}\n")
     while True:
         prompt_port = "Enter Flask Port Number"
         if default_port is not None:
@@ -1063,11 +1052,8 @@ def main():
     # =================================================================
     # Create the configuration dictionary with all collected values
     new_config = {
-        "WOL_MAC_ADDRESS": mac,
-        "BROADCAST_ADDRESS": broadcast,
-        "SITE_URL": url,
-        "WAIT_TIME_SECONDS": wait,
-        "PORT": port
+        "PORT": port,
+        "SERVERS": servers
     }
 
     # Write the configuration to file with pretty formatting (indent=4)
@@ -1077,11 +1063,13 @@ def main():
         
         # Display success message with all configured values
         print(f"\n[SUCCESS] Configuration saved to '{CONFIG_FILE}'.")
-        print(f"Server MAC: {mac}")
-        print(f"Broadcast Address: {broadcast}")
-        print(f"Redirect URL: {url}")
-        print(f"Wait Time: {wait}s")
         print(f"Port: {port}")
+        print(f"\nConfigured Servers ({len(servers)}):")
+        for idx, srv in enumerate(servers, 1):
+            print(f"  {idx}. {srv['NAME']}")
+            print(f"     MAC: {srv['WOL_MAC_ADDRESS']}")
+            print(f"     URL: {srv['SITE_URL']}")
+            print(f"     Wait: {srv['WAIT_TIME_SECONDS']}s")
     except Exception as e:
         # Handle any file writing errors
         print(f"\n[ERROR] Could not save configuration: {e}")

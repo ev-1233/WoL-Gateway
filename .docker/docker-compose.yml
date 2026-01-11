@@ -4,9 +4,10 @@ services:
       context: ..
       dockerfile: .docker/Dockerfile
     container_name: wol-gateway
-    # Use privileged mode for Docker Desktop to access host network for WOL
-    # Docker Desktop's network_mode: host doesn't work on Linux (runs in VM)
-    privileged: true
+    # Use NET_ADMIN and NET_RAW capabilities to allow broadcast packets
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
     # Map container port to host port
     ports:
       - "5000:5000"

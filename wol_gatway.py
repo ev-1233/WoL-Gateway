@@ -44,16 +44,14 @@ def load_config():
       5. Returns a dictionary with validated config values
     
     Returns:
-        dict: Validated configuration with keys: WOL_MAC_ADDRESS, SITE_URL,
-              WAIT_TIME_SECONDS, PORT
+        dict: Validated configuration with keys: PORT, SERVERS (array)
+              Each server has: NAME, WOL_MAC_ADDRESS, BROADCAST_ADDRESS, 
+              SITE_URL, WAIT_TIME_SECONDS
     
     Raises:
         FileNotFoundError: If config file doesn't exist
         ValueError: If config is invalid or missing required fields
     """
-    # Define all required configuration keys
-    required_keys = ("WOL_MAC_ADDRESS", "BROADCAST_ADDRESS", "SITE_URL", "WAIT_TIME_SECONDS", "PORT")
-
     # Check if configuration file exists
     if not os.path.exists(CONFIG_FILE):
         raise FileNotFoundError(
@@ -67,89 +65,95 @@ def load_config():
     except json.JSONDecodeError as e:
         raise ValueError(f"Error parsing {CONFIG_FILE}: {e}") from e
 
-    # Verify all required keys are present
-    missing = [key for key in required_keys if key not in user_config]
-    if missing:
-        raise ValueError(f"Missing required config keys: {', '.join(missing)}")
+    # Check if this is the new format (with SERVERS array) or old format
+    if "SERVERS" in user_config:
+        # New multi-server format
+        servers = user_config.get("SERVERS", [])
+        
+        if not servers or not isinstance(servers, list):
+            raise ValueError("SERVERS must be a non-empty array.")
+        
+        # Validate each server
+        for idx, server in enumerate(servers):
+            required_keys = ("NAME", "WOL_MAC_ADDRESS", "BROADCAST_ADDRESS", "SITE_URL", "WAIT_TIME_SECONDS")
+            missing = [key for key in required_keys if key not in server]
+            if missing:
+                raise ValueError(f"Server #{idx+1} missing required keys: {', '.join(missing)}")
+            
+            # Validate each field
+            if not server["NAME"].strip():
+                raise ValueError(f"Server #{idx+1}: NAME must not be empty.")
+            if not server["WOL_MAC_ADDRESS"].strip():
+                raise ValueError(f"Server #{idx+1}: WOL_MAC_ADDRESS must not be empty.")
+            if not server["BROADCAST_ADDRESS"].strip():
+                raise ValueError(f"Server #{idx+1}: BROADCAST_ADDRESS must not be empty.")
+            if not server["SITE_URL"].strip():
+                raise ValueError(f"Server #{idx+1}: SITE_URL must not be empty.")
+            
+            try:
+                wait = int(server["WAIT_TIME_SECONDS"])
+                if wait <= 0:
+                    raise ValueError(f"Server #{idx+1}: WAIT_TIME_SECONDS must be greater than zero.")
+            except (TypeError, ValueError) as e:
+                raise ValueError(f"Server #{idx+1}: WAIT_TIME_SECONDS must be a positive integer.") from e
+        
+        # Extract and validate port number
+        port_raw = user_config.get("PORT")
+        try:
+            port = int(port_raw)
+        except (TypeError, ValueError) as e:
+            raise ValueError("PORT must be an integer.") from e
 
-    # Extract and validate MAC address
-    mac = str(user_config["WOL_MAC_ADDRESS"]).strip()
-    # Extract and validate broadcast address
-    broadcast = str(user_config["BROADCAST_ADDRESS"]).strip()
-    # Extract and validate site URL
-    site = str(user_config["SITE_URL"]).strip()
-    # Extract wait time (will validate as integer below)
-    wait_raw = user_config["WAIT_TIME_SECONDS"]
-
-    # Validate MAC address is not empty
-    if not mac:
-        raise ValueError("WOL_MAC_ADDRESS must be set in the config file.")
+        # Ensure port is within valid range (1-65535)
+        if port <= 0 or port > 65535:
+            raise ValueError("PORT must be between 1 and 65535.")
+        
+        print(f"[{time.strftime('%H:%M:%S')}] Loaded config from {CONFIG_FILE}")
+        print(f"[{time.strftime('%H:%M:%S')}] Found {len(servers)} server(s)")
+        
+        return {
+            "PORT": port,
+            "SERVERS": servers
+        }
     
-    # Validate broadcast address is not empty
-    if not broadcast:
-        raise ValueError("BROADCAST_ADDRESS must be set in the config file.")
-    
-    # Validate site URL is not empty
-    if not site:
-        raise ValueError("SITE_URL must be set in the config file.")
-
-    # Validate and convert wait time to integer
-    try:
-        wait = int(wait_raw)
-    except (TypeError, ValueError) as e:
-        raise ValueError("WAIT_TIME_SECONDS must be an integer.") from e
-
-    # Ensure wait time is positive
-    if wait <= 0:
-        raise ValueError("WAIT_TIME_SECONDS must be greater than zero.")
-
-    # Extract and validate port number
-    port_raw = user_config["PORT"]
-    try:
-        port = int(port_raw)
-    except (TypeError, ValueError) as e:
-        raise ValueError("PORT must be an integer.") from e
-
-    # Ensure port is within valid range (1-65535)
-    if port <= 0 or port > 65535:
-        raise ValueError("PORT must be between 1 and 65535.")
-
-    # Log successful configuration load with timestamp
-    print(f"[{time.strftime('%H:%M:%S')}] Loaded config from {CONFIG_FILE}")
-
-    # Return validated configuration dictionary
-    return {
-        "WOL_MAC_ADDRESS": mac,
-        "BROADCAST_ADDRESS": broadcast,
-        "SITE_URL": site,
-        "WAIT_TIME_SECONDS": wait,
-        "PORT": port,
-    }
+    else:
+        # Old single-server format - migrate to new format
+        print(f"[{time.strftime('%H:%M:%S')}] Warning: Old config format detected. Please run setup_wol.py to update.")
+        required_keys = ("WOL_MAC_ADDRESS", "BROADCAST_ADDRESS", "SITE_URL", "WAIT_TIME_SECONDS", "PORT")
+        missing = [key for key in required_keys if key not in user_config]
+        if missing:
+            raise ValueError(f"Missing required config keys: {', '.join(missing)}")
+        
+        # Create a single server entry
+        servers = [{
+            "NAME": "Default Server",
+            "WOL_MAC_ADDRESS": str(user_config["WOL_MAC_ADDRESS"]).strip(),
+            "BROADCAST_ADDRESS": str(user_config["BROADCAST_ADDRESS"]).strip(),
+            "SITE_URL": str(user_config["SITE_URL"]).strip(),
+            "WAIT_TIME_SECONDS": int(user_config["WAIT_TIME_SECONDS"])
+        }]
+        
+        port = int(user_config["PORT"])
+        
+        print(f"[{time.strftime('%H:%M:%S')}] Loaded legacy config from {CONFIG_FILE}")
+        
+        return {
+            "PORT": port,
+            "SERVERS": servers
+        }
 
 # Load configuration at startup - will exit with error if config is invalid
 config = load_config()
 
 # Extract configuration values into module-level constants for easy access
 
-# 1. MAC Address of the Server's Network Card (e.g., "00:1A:2B:3C:4D:5E")
-#    This is the hardware address of the network interface to wake
-WOL_MAC_ADDRESS = config["WOL_MAC_ADDRESS"]
-
-# 2. Broadcast Address for sending WOL packets (e.g., "255.255.255.255" or "192.168.1.255")
-#    This determines where the magic packet will be broadcast on the network
-BROADCAST_ADDRESS = config["BROADCAST_ADDRESS"]
-
-# 3. The final URL of your site (e.g., "http://panel.yourdomain.com")
-#    Users will be redirected here after the wait time elapses
-SITE_URL = config["SITE_URL"]
-
-# 4. Time (in seconds) to wait for the server to boot up
-#    Should be long enough for the server to fully start and become accessible
-WAIT_TIME_SECONDS = config["WAIT_TIME_SECONDS"]
-
-# 5. Port for Flask to run on (e.g., 5000, 8080, 3000)
-#    Remember to forward this port in your router if accessing externally
+# Port for Flask to run on (e.g., 5000, 8080, 3000)
+# Remember to forward this port in your router if accessing externally
 PORT = config["PORT"]
+
+# Array of server configurations
+# Each server has: NAME, WOL_MAC_ADDRESS, BROADCAST_ADDRESS, SITE_URL, WAIT_TIME_SECONDS
+SERVERS = config["SERVERS"]
 
 # =================================================================
 #                     FLASK APPLICATION START
@@ -161,32 +165,41 @@ app = Flask(__name__)
 # =================================================================
 #                    HTML WAITING PAGE TEMPLATE
 # =================================================================
-# This HTML page is displayed to users after triggering the WOL packet.
-# Key features:
-#   - Auto-refresh meta tag redirects to SITE_URL after WAIT_TIME_SECONDS
-#   - CSS loading spinner animation for visual feedback
-#   - Responsive design with centered container
-#   - User-friendly messages explaining what's happening
-WAITING_PAGE_HTML = f"""
+# This function generates HTML pages dynamically for each server
+
+def generate_waiting_page(server_name, site_url, wait_time):
+    """
+    Generates a waiting page HTML for a specific server.
+    
+    Args:
+        server_name (str): Name of the server being woken
+        site_url (str): URL to redirect to after wait time
+        wait_time (int): Seconds to wait before redirecting
+    
+    Returns:
+        str: HTML content for the waiting page
+    """
+    return f"""
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Server Starting...</title>
-    <meta http-equiv="refresh" content="{WAIT_TIME_SECONDS};url={SITE_URL}">
+    <title>Starting {server_name}...</title>
+    <meta http-equiv="refresh" content="{wait_time};url={site_url}">
     <style>
         body {{ font-family: sans-serif; text-align: center; margin-top: 50px; background-color: #f0f0f0; }}
         .container {{ background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); display: inline-block; }}
         h1 {{ color: #333; }}
+        .server-name {{ color: #3498db; }}
         .loader {{ border: 8px solid #f3f3f3; border-top: 8px solid #3498db; border-radius: 50%; width: 50px; height: 50px; animation: spin 2s linear infinite; margin: 20px auto; }}
         @keyframes spin {{ 0% {{ transform: rotate(0deg); }} 100% {{ transform: rotate(360deg); }} }}
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🚀 Starting Server...</h1>
+        <h1>🚀 Starting <span class="server-name">{server_name}</span>...</h1>
         <div class="loader"></div>
-        <p>Sending Wake-on-LAN signal. Please wait approximately <strong>{WAIT_TIME_SECONDS} seconds</strong>.</p>
-        <p>You will be automatically redirected to your domain.</p>
+        <p>Sending Wake-on-LAN signal. Please wait approximately <strong>{wait_time} seconds</strong>.</p>
+        <p>You will be automatically redirected to your server.</p>
         <p>If the page fails to load, the server may still be booting. Please try refreshing.</p>
     </div>
 </body>
@@ -239,21 +252,38 @@ def find_wakeonlan_command():
     
     return None
 
-@app.route('/wake', methods=['GET'])
-def wake_server_and_redirect():
+@app.route('/wake/<server_id>', methods=['GET'])
+def wake_server_and_redirect(server_id):
     """
-    Main endpoint that triggers Wake-on-LAN and displays the waiting page.
+    Endpoint that triggers Wake-on-LAN for a specific server and displays the waiting page.
     
-    When a user visits http://<server>:<port>/wake, this function:
-      1. Sends a WOL magic packet to wake the sleeping server
-      2. Returns an HTML page with auto-redirect after WAIT_TIME_SECONDS
+    When a user visits http://<server>:<port>/wake/<server_id>, this function:
+      1. Finds the server configuration by ID (0-based index)
+      2. Sends a WOL magic packet to wake the sleeping server
+      3. Returns an HTML page with auto-redirect after server's wait time
     
-    The magic packet is a special network message that tells the server's
-    network card to power on the machine.
+    Args:
+        server_id (str): The index (0-based) of the server to wake
     
     Returns:
-        Response: HTML waiting page (200) or error message (500)
+        Response: HTML waiting page (200) or error message (400/500)
     """
+    
+    # Validate server_id
+    try:
+        idx = int(server_id)
+        if idx < 0 or idx >= len(SERVERS):
+            return f"Error: Invalid server ID. Must be between 0 and {len(SERVERS)-1}.", 400
+    except ValueError:
+        return "Error: Server ID must be a number.", 400
+    
+    # Get the server configuration
+    server = SERVERS[idx]
+    server_name = server["NAME"]
+    mac_address = server["WOL_MAC_ADDRESS"]
+    broadcast_address = server["BROADCAST_ADDRESS"]
+    site_url = server["SITE_URL"]
+    wait_time = server["WAIT_TIME_SECONDS"]
     
     # =================================================================
     # Step 1: Send the Wake-on-LAN Magic Packet
@@ -275,8 +305,8 @@ def wake_server_and_redirect():
         # -i flag specifies the broadcast address to send the packet to
         # check=True: raises CalledProcessError if command fails
         # capture_output=True: captures stdout/stderr for error reporting
-        subprocess.run([wakeonlan_cmd, '-i', BROADCAST_ADDRESS, WOL_MAC_ADDRESS], check=True, capture_output=True)
-        print(f"[{time.strftime('%H:%M:%S')}] WOL Magic Packet sent to {WOL_MAC_ADDRESS} via {BROADCAST_ADDRESS} using {wakeonlan_cmd}")
+        subprocess.run([wakeonlan_cmd, '-i', broadcast_address, mac_address], check=True, capture_output=True)
+        print(f"[{time.strftime('%H:%M:%S')}] WOL packet sent to '{server_name}' ({mac_address}) via {broadcast_address} using {wakeonlan_cmd}")
     
     except subprocess.CalledProcessError as e:
         # Command executed but failed (non-zero exit code)
@@ -295,20 +325,33 @@ def wake_server_and_redirect():
     # Step 2: Return the HTML Waiting Page
     # =================================================================
     # The HTML page contains a meta refresh tag that will automatically
-    # redirect the user's browser to SITE_URL after WAIT_TIME_SECONDS
-    return Response(WAITING_PAGE_HTML, mimetype='text/html')
+    # redirect the user's browser to site_url after wait_time seconds
+    return Response(generate_waiting_page(server_name, site_url, wait_time), mimetype='text/html')
 
 @app.route('/')
 def home():
     """
-    Root endpoint - landing page with button to start the server.
+    Root endpoint - landing page with buttons to start servers.
     
     This is displayed when users visit http://<server>:<port>/
-    It provides a button to wake the server, matching the design of the /wake page.
+    It provides a button for each configured server.
     
     Returns:
         Response: HTML landing page
     """
+    
+    # Generate HTML for server buttons
+    server_buttons_html = ""
+    for idx, server in enumerate(SERVERS):
+        server_name = server["NAME"]
+        wait_time = server["WAIT_TIME_SECONDS"]
+        server_buttons_html += f"""
+        <div class="server-card">
+            <h2>{server_name}</h2>
+            <a href="/wake/{idx}" class="button">Start Server</a>
+            <p class="server-info">Wait time: ~{wait_time} seconds</p>
+        </div>
+        """
     
     landing_page_html = f"""
 <!DOCTYPE html>
@@ -317,32 +360,53 @@ def home():
     <title>Server Gateway</title>
     <style>
         body {{ font-family: sans-serif; text-align: center; margin-top: 50px; background-color: #f0f0f0; }}
-        .container {{ background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); display: inline-block; }}
-        h1 {{ color: #333; }}
+        .container {{ background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); display: inline-block; min-width: 400px; }}
+        h1 {{ color: #333; margin-bottom: 30px; }}
+        .server-card {{ 
+            background: #f9f9f9; 
+            padding: 20px; 
+            margin: 15px 0; 
+            border-radius: 8px; 
+            border: 1px solid #e0e0e0;
+        }}
+        .server-card h2 {{ 
+            color: #2c3e50; 
+            margin: 0 0 15px 0; 
+            font-size: 20px; 
+        }}
         .button {{ 
             background-color: #3498db; 
             color: white; 
-            padding: 15px 32px; 
+            padding: 12px 28px; 
             text-align: center; 
             text-decoration: none; 
             display: inline-block; 
-            font-size: 18px; 
-            margin: 20px 2px; 
+            font-size: 16px; 
+            margin: 10px 2px; 
             cursor: pointer; 
             border: none; 
             border-radius: 5px;
             transition: background-color 0.3s;
         }}
         .button:hover {{ background-color: #2980b9; }}
+        .server-info {{ 
+            color: #666; 
+            font-size: 13px; 
+            margin: 10px 0 0 0; 
+        }}
+        .footer {{ 
+            color: #999; 
+            font-size: 12px; 
+            margin-top: 30px; 
+        }}
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🖥️ Server Gateway</h1>
-        <p>Click the button below to start the server.</p>
-        <a href="/wake" class="button">Start Server</a>
-        <p style="color: #666; font-size: 14px; margin-top: 20px;">
-            The server will be woken and you'll be redirected in approximately {WAIT_TIME_SECONDS} seconds.
+        {server_buttons_html}
+        <p class="footer">
+            {len(SERVERS)} server{'s' if len(SERVERS) != 1 else ''} configured
         </p>
     </div>
 </body>
@@ -363,8 +427,9 @@ if __name__ == '__main__':
     #               Set to True during development for auto-reload and detailed errors
     
     print(f"[{time.strftime('%H:%M:%S')}] Flask App starting on http://0.0.0.0:{PORT}")
-    print(f"[{time.strftime('%H:%M:%S')}] Waking MAC: {WOL_MAC_ADDRESS} via Broadcast: {BROADCAST_ADDRESS}")
-    print(f"[{time.strftime('%H:%M:%S')}] Redirect URL: {SITE_URL}")
-    print(f"[{time.strftime('%H:%M:%S')}] Access the /wake endpoint to trigger WOL")
+    print(f"[{time.strftime('%H:%M:%S')}] Configured {len(SERVERS)} server(s):")
+    for idx, server in enumerate(SERVERS):
+        print(f"[{time.strftime('%H:%M:%S')}]   {idx}. {server['NAME']} - MAC: {server['WOL_MAC_ADDRESS']}")
+    print(f"[{time.strftime('%H:%M:%S')}] Access the root page to see all servers")
     
     app.run(host='0.0.0.0', port=PORT, debug=False)

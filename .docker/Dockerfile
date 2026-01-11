@@ -24,5 +24,5 @@ EXPOSE 5000
 # RUN useradd -m -u 1000 woluser && chown -R woluser:woluser /app
 # USER woluser
 
-# Start the application
-CMD ["python3", "wol_gatway.py"]
+# Start the application with unbuffered output so logs appear immediately
+CMD ["python3", "-u", "wol_gatway.py"]
