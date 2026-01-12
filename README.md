@@ -1,15 +1,10 @@
 # WOL Gateway
 
-Wake-on-LAN gateway service that provides a simple web interface to wake up your servers remotely.
+Wake-on-LAN gateway service that provides a simple web interface to wake up your servers remotely form anywhere without opening up youre network.
 
 ## Features
 
-- 🚀 Simple web-based Wake-on-LAN trigger
-- 🐳 Docker support for easy deployment
-- 📦 Standalone executables for non-technical users
-- 🔄 Automatic update notifications
-- 🔧 Easy configuration setup
-- 🌐 Multiple server support
+
 
 ## Installation
 
@@ -51,19 +46,6 @@ The setup script will:
    ```
 
 3. Follow the on-screen prompts to configure your servers
-
-### Option 3: Direct Installation (Development)
-
-**Prerequisites:** Python 3.8+
-
-```bash
-# Clone the repository
-git clone https://github.com/ev1233/wol-gateway.git
-cd wol-gateway
-
-# Run setup (will install dependencies automatically)
-python3 setup_wol.py
-```
 
 ## Quick Start with Docker
 

@@ -20,6 +20,10 @@ WORKDIR /app
 COPY wol_gatway.py .
 COPY setup_wol.py .
 COPY version.py .
+COPY docker-entrypoint.sh /app/
+
+# Make entrypoint executable
+RUN chmod +x /app/docker-entrypoint.sh
 
 # Config file will be created at runtime if it doesn't exist
 # or mounted from host
@@ -36,6 +40,6 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 # RUN useradd -m -u 1000 woluser && chown -R woluser:woluser /app
 # USER woluser
 
-# Start the application with unbuffered output so logs appear immediately
-CMD ["python3", "-u", "wol_gatway.py"]
+# Use entrypoint script to handle setup and startup
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 
