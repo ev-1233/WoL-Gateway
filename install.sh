@@ -1,12 +1,12 @@
 #!/bin/bash
 #
 # WOL Gateway One-Line Installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/yourusername/wol-gateway/main/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/ev1233/wol-gateway/main/install.sh | bash
 #
 
 set -e
 
-REPO="yourusername/wol-gateway"
+REPO="ev-1233/wol-gateway"
 INSTALL_DIR="$HOME/wol-gateway"
 
 echo "======================================"

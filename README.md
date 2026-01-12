@@ -19,7 +19,7 @@ Wake-on-LAN gateway service that provides a simple web interface to wake up your
 
 ```bash
 # Download the repository
-git clone https://github.com/yourusername/wol-gateway.git
+git clone https://github.com/ev1233/wol-gateway.git
 cd wol-gateway
 
 # Run setup (will guide you through configuration)
@@ -36,9 +36,9 @@ The setup script will:
 **For non-technical users:**
 
 1. Download the latest executable for your system:
-   - [Linux](https://github.com/yourusername/wol-gateway/releases/latest/download/wol-gateway-linux)
-   - [Windows](https://github.com/yourusername/wol-gateway/releases/latest/download/wol-gateway-windows.exe)
-   - [macOS](https://github.com/yourusername/wol-gateway/releases/latest/download/wol-gateway-macos)
+   - [Linux](https://github.com/ev1233/wol-gateway/releases/latest/download/wol-gateway-linux)
+   - [Windows](https://github.com/ev1233/wol-gateway/releases/latest/download/wol-gateway-windows.exe)
+   - [macOS](https://github.com/ev1233/wol-gateway/releases/latest/download/wol-gateway-macos)
 
 2. Run the executable:
    ```bash
@@ -58,7 +58,7 @@ The setup script will:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/wol-gateway.git
+git clone https://github.com/ev1233/wol-gateway.git
 cd wol-gateway
 
 # Run setup (will install dependencies automatically)
@@ -71,7 +71,7 @@ If you already have Docker running:
 
 ```bash
 # Pull the pre-built image
-docker pull yourusername/wol-gateway:latest
+docker pull ev1233/wol-gateway:latest
 
 # Create config file (or use setup script)
 cat > WOL_Brige.config << EOF
@@ -96,7 +96,7 @@ docker run -d \
   -p 5000:5000 \
   -v $(pwd)/WOL_Brige.config:/app/WOL_Brige.config:ro \
   --restart unless-stopped \
-  yourusername/wol-gateway:latest
+  ev1233/wol-gateway:latest
 ```
 
 Access at: http://localhost:5000
@@ -129,12 +129,12 @@ The `WOL_Brige.config` file uses JSON format:
 
 ### Docker
 ```bash
-docker pull yourusername/wol-gateway:latest
+docker pull ev1233/wol-gateway:latest
 docker compose down && docker compose up -d
 ```
 
 ### Standalone Executable
-Download the latest version from [Releases](https://github.com/yourusername/wol-gateway/releases/latest)
+Download the latest version from [Releases](https://github.com/ev1233/wol-gateway/releases/latest)
 
 ### Direct Installation
 ```bash
@@ -165,7 +165,7 @@ docker inspect wol-gateway | grep CapAdd
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/wol-gateway.git
+git clone https://github.com/ev1233/wol-gateway.git
 cd wol-gateway
 
 # Create virtual environment
@@ -179,10 +179,3 @@ pip install flask wakeonlan
 python3 wol_gatway.py
 ```
 
-## License
-
-MIT License - See LICENSE file for details
-
-## Contributing
-
-Pull requests welcome! Please open an issue first to discuss major changes.

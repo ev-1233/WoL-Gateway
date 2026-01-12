@@ -11,7 +11,7 @@ permissions:
   packages: write
 
 env:
-  DOCKER_IMAGE: ev1233/wol-web-app
+  DOCKER_IMAGE: ev1233/wol-gateway
 
 jobs:
   build-executables:

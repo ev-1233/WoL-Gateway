@@ -67,12 +67,12 @@ Before your first release, you need to:
 
 1. **Update repository name in version.py:**
    ```python
-   __github_repo__ = "YOURUSERNAME/wol-gateway"  # Change this!
+   __github_repo__ = "ev-1233/wol-gateway"  # Change this!
    ```
 
 2. **Set up Docker Hub:**
    - Create account at https://hub.docker.com
-   - Create repository: `yourusername/wol-gateway`
+   - Create repository: `ev1233/wol-gateway`
    - Generate access token
 
 3. **Add GitHub Secrets:**
@@ -84,7 +84,7 @@ Before your first release, you need to:
    Edit `.github/workflows/release.yml`:
    ```yaml
    env:
-     DOCKER_IMAGE: yourusername/wol-gateway  # Change this!
+     DOCKER_IMAGE: ev1233/wol-gateway  # Change this!
    ```
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed instructions.
@@ -92,7 +92,7 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed instructions.
 ## 📖 How It Works for Users
 
 ### Docker Users:
-1. Pull image: `docker pull yourusername/wol-gateway:latest`
+1. Pull image: `docker pull ev1233/wol-gateway:latest`
 2. Run with config file
 3. **No update prompts** (manual pull when ready)
 4. **No Docker-in-Docker issues** (smart detection)

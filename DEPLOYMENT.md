@@ -14,12 +14,12 @@ Both are automatically built and released via GitHub Actions when you push a ver
 
 1. **Update version.py with your GitHub repository:**
    ```python
-   __github_repo__ = "ev-1233/WoL-Web-app" 
+   __github_repo__ = "ev-1233/wol-gateway" 
    ```
 
 2. **Set up Docker Hub:**
    - Create account at https://hub.docker.com
-   - Create repository: `ev1233/wol-web-app`
+   - Create repository: `ev1233/wol-gateway`
    - Generate access token: Account Settings → Security → New Access Token
 
 3. **Configure GitHub Secrets:**
@@ -33,7 +33,7 @@ Both are automatically built and released via GitHub Actions when you push a ver
    Edit `.github/workflows/release.yml`:
    ```yaml
    env:
-     DOCKER_IMAGE: yourusername/wol-gateway  # Change this!
+     DOCKER_IMAGE: ev1233/wol-gateway
    ```
 
 ## Making a Release
@@ -76,13 +76,13 @@ Monitor progress: GitHub repo → Actions tab
 ### 4. Verify Release
 
 Check that everything worked:
-- **Docker Hub:** https://hub.docker.com/r/yourusername/wol-gateway/tags
-- **GitHub Releases:** https://github.com/yourusername/wol-gateway/releases
+- **Docker Hub:** https://hub.docker.com/r/ev1233/wol-gateway/tags
+- **GitHub Releases:** https://github.com/ev-1233/wol-gateway/releases
 
 Test the Docker image:
 ```bash
-docker pull yourusername/wol-gateway:latest
-docker run --rm yourusername/wol-gateway:latest python3 -c "from version import __version__; print(__version__)"
+docker pull ev1233/wol-gateway:latest
+docker run --rm ev1233/wol-gateway:latest python3 -c "from version import __version__; print(__version__)"
 ```
 
 ## How Updates Work for Users
@@ -97,7 +97,7 @@ When running in Docker, the container:
 
 Users update by:
 ```bash
-docker pull yourusername/wol-gateway:latest
+docker pull ev1233/wol-gateway:latest
 docker compose down && docker compose up -d
 ```
 
@@ -117,7 +117,7 @@ Users see:
   Current version: 1.0.0
   Latest version:  1.0.1
 
-  Download: https://github.com/yourusername/wol-gateway/releases/latest
+  Download: https://github.com/ev-1233/wol-gateway/releases/latest
 ===========================================================
 ```
 

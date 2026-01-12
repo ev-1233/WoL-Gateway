@@ -43,7 +43,7 @@ docker run -d \
   -p 5000:5000 \
   -v $(pwd)/WOL_Brige.config:/app/WOL_Brige.config:ro \
   --restart unless-stopped \
-  yourusername/wol-gateway:latest
+  ev1233/wol-gateway:latest
 ```
 
 ### 3. Access the Gateway
@@ -74,7 +74,7 @@ docker restart wol-gateway
 docker rm -f wol-gateway
 
 # Update to latest version
-docker pull yourusername/wol-gateway:latest
+docker pull ev1233/wol-gateway:latest
 docker rm -f wol-gateway
 # Then run the docker run command again
 ```
@@ -144,7 +144,7 @@ Create `docker-compose.yml`:
 ```yaml
 services:
   wol-gateway:
-    image: yourusername/wol-gateway:latest
+    image: ev1233/wol-gateway:latest
     container_name: wol-gateway
     cap_add:
       - NET_ADMIN
