@@ -41,65 +41,32 @@ The setup script will:
 
 3. Follow the on-screen prompts to configure your servers
 
-## Quick Start with Docker
+## Install with git
+If you just love git that much:
 
-If you already have Docker running:
+**python3 must be installed and we highly recomend you install docker(technically optional)**
 
 ```bash
-# Pull the pre-built image
-docker pull ev1233/wol-gateway:latest
+# Pull the latest release
+LATEST_VERSION=$(curl -s https://api.github.com/repos/ev1233/WoL-Gateway/releases/latest | grep "tag_name" | cut -d '"' -f 4)
+wget https://github.com/ev1233/WoL-Gateway/archive/refs/tags/$LATEST_VERSION.tar.gz -O wol-gateway-latest.tar.gz
 
-# Create config file (or use setup script)
-cat > WOL_Brige.config << EOF
-{
-  "PORT": 5000,
-  "SERVERS": [
-    {
-      "NAME": "My Server",
-      "MAC": "00:11:22:33:44:55",
-      "URL": "http://192.168.1.100",
-      "WAIT": 30
-    }
-  ]
-}
-EOF
+# Decompress the file
+tar --transform='s/^WoL-Gateway-.*/WoL-Gateway/' -xzf wol-gateway-latest.tar.gz
 
-# Run the container
-docker run -d \
-  --name wol-gateway \
-  --cap-add NET_ADMIN \
-  --cap-add NET_RAW \
-  -p 5000:5000 \
-  -v $(pwd)/WOL_Brige.config:/app/WOL_Brige.config:ro \
-  --restart unless-stopped \
-  ev1233/wol-gateway:latest
+# Navigate to the folder
+cd WoL-Gateway
+
+python3 setup_wol.py
+
+# Decompress the file
+tar --transform='s/^WoL-Gateway-0.6.1/WoL-Gateway/' -xzf wol-gateway-latest.tar.gz
+
+# Navigate to the folder
+cd WoL-Gateway
+
+python3 setup_wol.py
 ```
-
-Access at: http://localhost:5000
-
-## Configuration
-
-The `WOL_Brige.config` file uses JSON format:
-
-```json
-{
-  "PORT": 5000,
-  "SERVERS": [
-    {
-      "NAME": "Server Name",
-      "MAC": "00:11:22:33:44:55",
-      "URL": "http://192.168.1.100",
-      "WAIT": 30
-    }
-  ]
-}
-```
-
-- **PORT**: Port number for the web interface
-- **NAME**: Display name for the server
-- **MAC**: MAC address of the server's network card
-- **URL**: URL to redirect to after waking
-- **WAIT**: Seconds to wait before redirecting
 
 ## Updating
 
@@ -112,7 +79,7 @@ docker compose down && docker compose up -d
 ### Standalone Executable
 Download the latest version from [Releases](https://github.com/ev1233/wol-gateway/releases/latest)
 
-### Direct Installation
+### Github install
 ```bash
 git pull
 python3 setup_wol.py
