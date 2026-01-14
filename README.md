@@ -21,7 +21,7 @@ The setup script will:
 - Build and start the Docker container automatically
 - Set up auto-restart on failure
 
-### Option 2: Standalone Executable (No Installation Required)
+### Option 2: Standalone Executable (No Prerequisites Required)
 
 
 1. Download the latest executable for your system:
@@ -31,41 +31,59 @@ The setup script will:
 
 2. Run the executable:
    ```bash
-   # Linux/macOS
+   # Linux
    chmod +x wol-gateway-linux
    ./wol-gateway-linux
    
    # Windows
    wol-gateway-windows.exe
+   
+   # macOS
+   chmod +x wol-gateway-macos
+   ./wol-gateway-macos
    ```
 
 3. Follow the on-screen prompts to configure your servers
 
 ## Install with git
+
 If you just love git that much:
 
-**python3 must be installed and we highly recomend you install docker(technically optional)**
+**python3 and pip must be installed and we highly recomend you install docker(technically optional):**
+
+- python3 [install guide](https://pythongeeks.org/python-3-installation-and-setup-guide/ "by pythongeeks.org")
+- Pip [install guide](https://pip.pypa.io/en/stable/installation/ "from pip themselves")
+
 
 ```bash
-# Pull the latest release
+# Linux
 LATEST_VERSION=$(curl -s https://api.github.com/repos/ev1233/WoL-Gateway/releases/latest | grep "tag_name" | cut -d '"' -f 4)
 wget https://github.com/ev1233/WoL-Gateway/archive/refs/tags/$LATEST_VERSION.tar.gz -O wol-gateway-latest.tar.gz
-
-# Decompress the file
 tar --transform='s/^WoL-Gateway-.*/WoL-Gateway/' -xzf wol-gateway-latest.tar.gz
+cd WoL-Gateway
+python3 setup_wol.py
 
-# Navigate to the folder
+# macOS
+LATEST_VERSION=$(curl -s https://api.github.com/repos/ev1233/WoL-Gateway/releases/latest | grep "tag_name" | cut -d '"' -f 4)
+curl -L https://github.com/ev1233/WoL-Gateway/archive/refs/tags/$LATEST_VERSION.tar.gz -o wol-gateway-latest.tar.gz
+
+tar -xzf wol-gateway-latest.tar.gz
+
+mv WoL-Gateway-* WoL-Gateway
 cd WoL-Gateway
 
 python3 setup_wol.py
 
-# Decompress the file
-tar --transform='s/^WoL-Gateway-0.6.1/WoL-Gateway/' -xzf wol-gateway-latest.tar.gz
+# Windows (PowerShell)
+$LATEST_VERSION = (Invoke-RestMethod -Uri "https://api.github.com/repos/ev1233/WoL-Gateway/releases/latest").tag_name
+Invoke-WebRequest -Uri "https://github.com/ev1233/WoL-Gateway/archive/refs/tags/$LATEST_VERSION.zip" -OutFile "wol-gateway-latest.zip"
 
-# Navigate to the folder
+Expand-Archive -Path "wol-gateway-latest.zip" -DestinationPath "."
+Rename-Item -Path "WoL-Gateway-*" -NewName "WoL-Gateway"
+
 cd WoL-Gateway
 
-python3 setup_wol.py
+python setup_wol.py
 ```
 
 ## Updating
@@ -81,8 +99,13 @@ Download the latest version from [Releases](https://github.com/ev1233/wol-gatewa
 
 ### Github install
 ```bash
+# Linux/macOS
 git pull
 python3 setup_wol.py
+
+# Windows (PowerShell)
+git pull
+python setup_wol.py
 ```
 
 ## Troubleshooting
@@ -107,18 +130,28 @@ docker inspect wol-gateway | grep CapAdd
 ## Development
 
 ```bash
-# Clone repository
+# Linux
 git clone https://github.com/ev1233/wol-gateway.git
 cd wol-gateway
-
-# Create virtual environment
 python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
+source venv/bin/activate
 pip install flask wakeonlan
-
-# Run directly
 python3 wol_gatway.py
-```
 
+# macOS
+git clone https://github.com/ev1233/wol-gateway.git
+cd wol-gateway
+python3 -m venv venv
+source venv/bin/activate
+pip install flask wakeonlan
+python3 wol_gatway.py
+
+# Windows (PowerShell)
+git clone https://github.com/ev1233/wol-gateway.git
+cd wol-gateway
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install flask wakeonlan
+python wol_gatway.py
+```
+on VScode you can run the gateway with out the setup script by pressing **ctrl+shift+b**
