@@ -108,6 +108,26 @@ git pull
 python setup_wol.py
 ```
 
+
+## Persistent Configuration
+
+If you want to keep your config outside the container:
+
+```bash
+# Create config directory
+mkdir -p ~/wol-gateway-config
+
+# First run with volume (setup will save here)
+docker run -it --name wol-gateway \
+  --cap-add NET_ADMIN --cap-add NET_RAW \
+  -p 5000:5000 \
+  -v ~/wol-gateway-config:/app \
+  --restart unless-stopped \
+  ev1233/wol-gateway:latest
+```
+
+Your config is now saved in `~/wol-gateway-config/WOL_Brige.config`
+
 ## Troubleshooting
 
 ### Wake-on-LAN not working?

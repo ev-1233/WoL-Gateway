@@ -2,39 +2,12 @@
 
 ## Overview
 
-This project supports two distribution methods:
+This project supports 3 distribution methods:
 1. **Docker Image** - Automated builds pushed to Docker Hub
 2. **Standalone Executables** - PyInstaller binaries for Linux, Windows, and macOS
+3. **git soucre code** - For people how ned to tweak code
 
 Both are automatically built and released via GitHub Actions when you push a version tag.
-
-## Prerequisites
-
-### One-Time Setup
-
-1. **Update version.py with your GitHub repository:**
-   ```python
-   __github_repo__ = "ev-1233/wol-gateway" 
-   ```
-
-2. **Set up Docker Hub:**
-   - Create account at https://hub.docker.com
-   - Create repository: `ev1233/wol-gateway`
-   - Generate access token: Account Settings → Security → New Access Token
-
-3. **Configure GitHub Secrets:**
-   Go to: GitHub repo → Settings → Secrets and variables → Actions
-   
-   Add these secrets:
-   - `DOCKER_USERNAME`: Your Docker Hub username
-   - `DOCKER_PASSWORD`: Your Docker Hub access token
-
-4. **Update workflow file:**
-   Edit `.github/workflows/release.yml`:
-   ```yaml
-   env:
-     DOCKER_IMAGE: ev1233/wol-gateway
-   ```
 
 ## Making a Release
 
@@ -84,50 +57,6 @@ Test the Docker image:
 docker pull ev1233/wol-gateway:latest
 docker run --rm ev1233/wol-gateway:latest python3 -c "from version import __version__; print(__version__)"
 ```
-
-## How Updates Work for Users
-
-### Docker Users
-
-When running in Docker, the container:
-- ✅ Detects it's in Docker (via `is_running_in_docker()`)
-- ✅ Skips Docker installation prompts
-- ✅ Skips dependency installation (pre-installed in image)
-- ✅ **Does NOT check for updates** (users manually pull new images)
-
-Users update by:
-```bash
-docker pull ev1233/wol-gateway:latest
-docker compose down && docker compose up -d
-```
-
-### Executable Users
-
-When running the standalone executable:
-- ✅ Checks GitHub for newer version on startup
-- ✅ Shows update notification with download link
-- ✅ **Does NOT auto-update** (user downloads manually)
-- ✅ Can still install/configure Docker if desired
-
-Users see:
-```
-===========================================================
-🔔  UPDATE AVAILABLE!
-===========================================================
-  Current version: 1.0.0
-  Latest version:  1.0.1
-
-  Download: https://github.com/ev-1233/wol-gateway/releases/latest
-===========================================================
-```
-
-## Distribution Methods Compared
-
-| Method | Installation | Updates | Dependencies | Best For |
-|--------|-------------|---------|--------------|----------|
-| **Docker** | Pull image | Manual pull | Pre-installed | Servers, consistent deployment |
-| **Executable** | Download & run | Manual download | Bundled | Non-technical users, quick setup |
-| **Direct** | Git clone + setup | Git pull | Auto-installed | Developers, customization |
 
 ## Testing Before Release
 
@@ -192,7 +121,3 @@ git tag -a vX.Y.Z -m "Release vX.Y.Z"
 git push origin vX.Y.Z
 # Wait for Actions to complete
 ```
-
-## Security Note
-
-The Docker image runs as root by default (required for host networking and privileged ports). If you configure it to use a port ≥ 1024, uncomment the non-root user lines in the Dockerfile.
