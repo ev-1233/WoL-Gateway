@@ -11,13 +11,14 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
-RUN pip install --no-cache-dir flask
+RUN pip install --no-cache-dir flask pyotp qrcode pillow
 
 # Set working directory
 WORKDIR /app
 
 # Copy application files
 COPY wol_gatway.py .
+COPY admin_panel.py .
 COPY setup_wol.py .
 COPY version.py .
 COPY docker-entrypoint.sh /app/

@@ -23,6 +23,7 @@ import subprocess
 import time
 import json
 import os
+import secrets
 from flask import Flask, redirect, Response
 
 # =================================================================
@@ -161,6 +162,21 @@ SERVERS = config["SERVERS"]
 
 # Initialize Flask application
 app = Flask(__name__)
+
+# Set session secret key for admin panel
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(32))
+
+# Import and register admin panel if enabled
+try:
+    from admin_panel import admin_bp, load_admin_config
+    admin_config = load_admin_config()
+    if admin_config.get('admin_enabled', False):
+        app.register_blueprint(admin_bp)
+        print(f"[{time.strftime('%H:%M:%S')}] Admin panel enabled at /admin")
+except ImportError:
+    print(f"[{time.strftime('%H:%M:%S')}] Admin panel module not found")
+except Exception as e:
+    print(f"[{time.strftime('%H:%M:%S')}] Error loading admin panel: {e}")
 
 # =================================================================
 #                    HTML WAITING PAGE TEMPLATE
@@ -389,6 +405,11 @@ def home():
             transition: background-color 0.3s;
         }}
         .button:hover {{ background-color: #2980b9; }}
+        .button.admin {{ 
+            background-color: #9b59b6; 
+            margin-top: 20px;
+        }}
+        .button.admin:hover {{ background-color: #8e44ad; }}
         .server-info {{ 
             color: #666; 
             font-size: 13px; 
@@ -405,6 +426,9 @@ def home():
     <div class="container">
         <h1>🖥️ Server Gateway</h1>
         {server_buttons_html}
+        <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #e0e0e0;">
+            <a href="/admin" class="button admin">⚙️ Admin Panel</a>
+        </div>
         <p class="footer">
             {len(SERVERS)} server{'s' if len(SERVERS) != 1 else ''} configured
         </p>
@@ -414,6 +438,17 @@ def home():
     """
     
     return Response(landing_page_html, mimetype='text/html')
+
+
+@app.route('/health')
+def health_check():
+    """
+    Health check endpoint for Docker and monitoring.
+    
+    Returns:
+        Response: JSON response with status
+    """
+    return {"status": "ok", "servers": len(SERVERS)}, 200
 
 # =================================================================
 #                     APPLICATION ENTRY POINT

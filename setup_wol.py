@@ -187,6 +187,9 @@ def install_dependencies():
     
     Dependencies:
       - Flask (Python package)
+      - pyotp (Python package for 2FA - optional)
+      - qrcode (Python package for QR codes - optional)
+      - Pillow (Python package for QR code images - optional)
       - wakeonlan (system command-line utility)
     
     Returns:
@@ -218,7 +221,7 @@ def install_dependencies():
     needs_sudo = os.geteuid() != 0  # True if not running as root
     
     # Check Flask
-    print("\n[1/2] Checking Flask...")
+    print("\n[1/5] Checking Flask...")
     if check_python_package('flask'):
         print("  ✓ Flask is already installed")
     else:
@@ -243,8 +246,83 @@ def install_dependencies():
             print(f"  ✗ Error installing Flask: {e}")
             return False
     
+    # Check pyotp (for admin panel 2FA)
+    print("\n[2/5] Checking pyotp...")
+    if check_python_package('pyotp'):
+        print("  ✓ pyotp is already installed")
+    else:
+        print("  ✗ pyotp is not installed")
+        print("  Installing pyotp via pip3...")
+        
+        try:
+            result = subprocess.run(
+                [sys.executable, '-m', 'pip', 'install', '--user', 'pyotp'],
+                capture_output=True,
+                text=True
+            )
+            
+            if result.returncode == 0:
+                print("  ✓ pyotp installed successfully")
+            else:
+                print(f"  ✗ Failed to install pyotp: {result.stderr}")
+                return False
+                
+        except Exception as e:
+            print(f"  ✗ Error installing pyotp: {e}")
+            return False
+    
+    # Check qrcode (for admin panel 2FA)
+    print("\n[3/5] Checking qrcode...")
+    if check_python_package('qrcode'):
+        print("  ✓ qrcode is already installed")
+    else:
+        print("  ✗ qrcode is not installed")
+        print("  Installing qrcode via pip3...")
+        
+        try:
+            result = subprocess.run(
+                [sys.executable, '-m', 'pip', 'install', '--user', 'qrcode[pil]'],
+                capture_output=True,
+                text=True
+            )
+            
+            if result.returncode == 0:
+                print("  ✓ qrcode installed successfully")
+            else:
+                print(f"  ✗ Failed to install qrcode: {result.stderr}")
+                return False
+                
+        except Exception as e:
+            print(f"  ✗ Error installing qrcode: {e}")
+            return False
+    
+    # Check Pillow (for QR code image generation)
+    print("\n[4/5] Checking Pillow...")
+    if check_python_package('PIL') or check_python_package('Pillow'):
+        print("  ✓ Pillow is already installed")
+    else:
+        print("  ✗ Pillow is not installed")
+        print("  Installing Pillow via pip3...")
+        
+        try:
+            result = subprocess.run(
+                [sys.executable, '-m', 'pip', 'install', '--user', 'Pillow'],
+                capture_output=True,
+                text=True
+            )
+            
+            if result.returncode == 0:
+                print("  ✓ Pillow installed successfully")
+            else:
+                print(f"  ✗ Failed to install Pillow: {result.stderr}")
+                return False
+                
+        except Exception as e:
+            print(f"  ✗ Error installing Pillow: {e}")
+            return False
+    
     # Check wakeonlan
-    print("\n[2/2] Checking wakeonlan...")
+    print("\n[5/5] Checking wakeonlan...")
     if check_command_exists('wakeonlan'):
         print("  ✓ wakeonlan is already installed")
     else:
@@ -378,6 +456,120 @@ def load_current_config():
             # Silently fail if file is corrupted or invalid JSON
             pass
     return {}
+
+
+def setup_admin_panel():
+    """
+    Configure the admin panel with password and optional 2FA.
+    
+    Returns:
+        bool: True if setup was successful, False otherwise
+    """
+    import hashlib
+    
+    ADMIN_CONFIG_FILE = "admin_config.json"
+    
+    print("\n" + "="*50)
+    print("      Admin Panel Configuration")
+    print("="*50)
+    
+    print("\nThe admin panel allows you to manage server configurations")
+    print("through a web interface after initial setup.")
+    print("\nFeatures:")
+    print("  - Add/edit/delete servers")
+    print("  - Change admin password")
+    print("  - Optional 2FA authentication")
+    print("  - Secure password-protected access")
+    
+    # Check if admin config already exists
+    admin_config = {}
+    if os.path.exists(ADMIN_CONFIG_FILE):
+        try:
+            with open(ADMIN_CONFIG_FILE, 'r') as f:
+                admin_config = json.load(f)
+        except:
+            pass
+    
+    # Ask if user wants to enable admin panel
+    enable_choice = input("\nEnable admin panel? [Y/n]: ").strip().lower()
+    if enable_choice and enable_choice not in ('y', 'yes'):
+        # Disable admin panel
+        admin_config['admin_enabled'] = False
+        with open(ADMIN_CONFIG_FILE, 'w') as f:
+            json.dump(admin_config, f, indent=4)
+        print("Admin panel disabled. You can use setup_wol.py to make changes.")
+        return True
+    
+    # Admin panel is enabled
+    admin_config['admin_enabled'] = True
+    
+    # Set username
+    default_username = admin_config.get('admin_username', 'admin')
+    username_input = input(f"\nAdmin Username [{default_username}]: ").strip()
+    admin_config['admin_username'] = username_input if username_input else default_username
+    
+    # Set password
+    while True:
+        password = input("\nAdmin Password (min 6 characters): ").strip()
+        if len(password) < 6:
+            print("Error: Password must be at least 6 characters long.")
+            continue
+        
+        confirm_password = input("Confirm Password: ").strip()
+        if password != confirm_password:
+            print("Error: Passwords do not match.")
+            continue
+        
+        # Hash the password
+        password_hash = hashlib.sha256(password.encode()).hexdigest()
+        admin_config['admin_password_hash'] = password_hash
+        break
+    
+    # Ask about 2FA
+    print("\n" + "="*50)
+    print("  Two-Factor Authentication (2FA)")
+    print("="*50)
+    print("\n2FA adds an extra layer of security by requiring a code")
+    print("from an authenticator app (Google Authenticator, Authy, etc.)")
+    print("in addition to your password.")
+    print("\nNote: You can enable/disable 2FA later from the admin panel.")
+    
+    enable_2fa = input("\nEnable 2FA now? [y/N]: ").strip().lower()
+    
+    if enable_2fa in ('y', 'yes'):
+        import pyotp
+        
+        # Generate a new secret
+        secret = pyotp.random_base32()
+        admin_config['2fa_secret'] = secret
+        admin_config['2fa_enabled'] = False  # Will be enabled after verification in web UI
+        
+        print("\n✓ 2FA secret generated!")
+        print("\nYou'll need to scan a QR code after starting the server.")
+        print("Access the admin panel at: http://<server-ip>:<port>/admin")
+        print("Then go to Security Settings to complete 2FA setup.")
+    else:
+        admin_config['2fa_enabled'] = False
+        admin_config['2fa_secret'] = ''
+    
+    # Save admin configuration
+    try:
+        with open(ADMIN_CONFIG_FILE, 'w') as f:
+            json.dump(admin_config, f, indent=4)
+        
+        print("\n✓ Admin panel configured successfully!")
+        print(f"\nUsername: {admin_config['admin_username']}")
+        print("Access URL: http://<server-ip>:<port>/admin")
+        
+        return True
+    except Exception as e:
+        print(f"\n✗ Error saving admin configuration: {e}")
+        return False
+
+
+def load_current_config_old():
+    """DEPRECATED - kept for compatibility"""
+    return load_current_config()
 
 def check_docker_installed():
     """
@@ -985,11 +1177,74 @@ def main():
     print("      Configuration Setup           ")
     print("====================================\n")
     
+    # Ask user if they want to use setup script or admin panel
+    print("How would you like to configure the WOL Gateway?")
+    print("\n1. Setup Script (Traditional)")
+    print("   - Configure everything now")
+    print("   - Quick one-time setup")
+    print("   - Can re-run anytime")
+    print("\n2. Web Admin Panel (Recommended)")
+    print("   - Configure through browser")
+    print("   - Easy to manage later")
+    print("   - Password protected with optional 2FA")
+    print("   - Add/edit/delete servers anytime")
+    
+    config_choice = input("\nChoose configuration method [1/2] (default: 2): ").strip()
+    
+    if config_choice == '1':
+        print("\n--- Setup Script Mode ---\n")
+        use_admin_panel = False
+    else:
+        print("\n--- Web Admin Panel Mode ---\n")
+        use_admin_panel = True
+    
     # Load any existing configuration to use as defaults
     current_config = load_current_config()
+    default_port = current_config.get("PORT", 5000)
     
-    # Extract port default (shared across all servers)
-    default_port = current_config.get("PORT", 5000)  # Default port is 5000
+    # If using admin panel, set it up first
+    if use_admin_panel:
+        if not setup_admin_panel():
+            print("\n⚠ Admin panel setup failed. Falling back to setup script.")
+            use_admin_panel = False
+    
+    # If using setup script OR admin panel setup failed, do traditional config
+    if not use_admin_panel:
+        # Traditional configuration mode
+        configure_servers_traditional(current_config, default_port, 
+                                     docker_available, choice)
+    else:
+        # Admin panel mode - still need basic config
+        print("\n" + "="*50)
+        print("      Initial Server Configuration")
+        print("="*50)
+        print("\nYou'll configure at least one server now.")
+        print("You can add more servers later through the admin panel.\n")
+        
+        configure_servers_traditional(current_config, default_port,
+                                     docker_available, choice)
+        
+        print("\n" + "="*50)
+        print("  ✓ Setup Complete!")
+        print("="*50)
+        print("\nNext steps:")
+        print("  1. Start the WOL Gateway: ./start.sh")
+        print("  2. Access admin panel: http://<server-ip>:<port>/admin")
+        print("  3. Log in with the credentials you just created")
+        print("  4. Configure additional servers if needed")
+
+
+def configure_servers_traditional(current_config, default_port, 
+                                  docker_available, deployment_choice):
+    """
+    Traditional server configuration through setup script.
+    
+    Args:
+        current_config: Existing configuration dict
+        default_port: Default port number
+        docker_available: Whether Docker is available
+        deployment_choice: '1' for Docker, '2' for direct installation
+    """
     
     # Extract existing servers if any
     existing_servers = current_config.get("SERVERS", [])
@@ -1167,7 +1422,7 @@ def main():
         return
     
     # Now handle deployment based on chosen method
-    if docker_available and choice != '2':
+    if docker_available and deployment_choice != '2':
         # Docker mode
         print("\n" + "="*50)
         if not setup_with_docker():

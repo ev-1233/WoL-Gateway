@@ -1,0 +1,7 @@
+{
+    "admin_enabled": true,
+    "admin_username": "admin",
+    "admin_password_hash": "1306cdf41ee9380c236c193d0a5e0dbc24d7656a85f4959196a3d929555d03d9",
+    "2fa_enabled": false,
+    "2fa_secret": "OPYGXR25PNUNXXNL3OED7JR6UZK32OKC"
+}
