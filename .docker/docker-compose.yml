@@ -11,9 +11,10 @@ services:
     # Map container port to host port
     ports:
       - "5000:5000"
-    # Mount config file so you can update it without rebuilding
+    # Mount config files so you can update them without rebuilding
     volumes:
-      - ../WOL_Brige.config:/app/WOL_Brige.config:ro
+      - ../WOL_Brige.config:/app/WOL_Brige.config
+      - ../admin_config.json:/app/admin_config.json
     restart: unless-stopped
     # Optional: Set timezone
     environment:

@@ -36,27 +36,37 @@ SECRET_KEY = secrets.token_hex(32)
 def load_admin_config():
     """Load admin configuration from file."""
     if not os.path.exists(ADMIN_CONFIG_FILE):
-        # Create default config
+        # Create default config with users array
         default_config = {
             "admin_enabled": False,
-            "admin_username": "admin",
-            "admin_password_hash": "",
-            "2fa_enabled": False,
-            "2fa_secret": ""
+            "users": []
         }
         save_admin_config(default_config)
         return default_config
     
     try:
         with open(ADMIN_CONFIG_FILE, 'r') as f:
-            return json.load(f)
+            config = json.load(f)
+            
+            # Migrate old single-user format to new multi-user format
+            if 'admin_username' in config and 'users' not in config:
+                old_user = {
+                    "username": config.get('admin_username', 'admin'),
+                    "password_hash": config.get('admin_password_hash', ''),
+                    "2fa_enabled": config.get('2fa_enabled', False),
+                    "2fa_secret": config.get('2fa_secret', '')
+                }
+                config = {
+                    "admin_enabled": config.get('admin_enabled', False),
+                    "users": [old_user] if old_user['password_hash'] else []
+                }
+                save_admin_config(config)
+            
+            return config
     except:
         return {
             "admin_enabled": False,
-            "admin_username": "admin",
-            "admin_password_hash": "",
-            "2fa_enabled": False,
-            "2fa_secret": ""
+            "users": []
         }
 
 
@@ -108,13 +118,17 @@ def login():
         password = request.form.get('password', '')
         totp_code = request.form.get('totp_code', '')
         
-        # Verify username and password
-        if (username == admin_config['admin_username'] and 
-            verify_password(password, admin_config['admin_password_hash'])):
-            
-            # Check 2FA if enabled
-            if admin_config.get('2fa_enabled', False):
-                totp = pyotp.TOTP(admin_config['2fa_secret'])
+        # Find user in users array
+        user = None
+        for u in admin_config.get('users', []):
+            if u['username'] == username and verify_password(password, u['password_hash']):
+                user = u
+                break
+        
+        if user:
+            # Check 2FA if enabled for this user
+            if user.get('2fa_enabled', False):
+                totp = pyotp.TOTP(user['2fa_secret'])
                 if not totp.verify(totp_code, valid_window=1):
                     error = "Invalid 2FA code"
                     return render_template_string(LOGIN_TEMPLATE, error=error, 
@@ -122,21 +136,26 @@ def login():
             
             # Login successful
             session['admin_logged_in'] = True
+            session['admin_username'] = username
             session.permanent = True
             return redirect(url_for('admin.dashboard'))
         else:
             error = "Invalid username or password"
+            # Check if any user has 2FA to show the field
+            any_2fa = any(u.get('2fa_enabled', False) for u in admin_config.get('users', []))
             return render_template_string(LOGIN_TEMPLATE, error=error,
-                                         require_2fa=admin_config.get('2fa_enabled', False))
+                                         require_2fa=any_2fa)
     
-    return render_template_string(LOGIN_TEMPLATE, error=None,
-                                 require_2fa=admin_config.get('2fa_enabled', False))
+    # Check if any user has 2FA enabled
+    any_2fa = any(u.get('2fa_enabled', False) for u in admin_config.get('users', []))
+    return render_template_string(LOGIN_TEMPLATE, error=None, require_2fa=any_2fa)
 
 
 @admin_bp.route('/logout')
 def logout():
     """Admin logout."""
     session.pop('admin_logged_in', None)
+    session.pop('admin_username', None)
     return redirect(url_for('admin.login'))
 
 
@@ -249,6 +268,158 @@ def delete_server(server_id):
     
     flash(f'Server "{deleted_name}" deleted successfully! Restart the application for changes to take effect.', 'success')
     return redirect(url_for('admin.dashboard'))
+
+
+@admin_bp.route('/restart', methods=['POST'])
+@login_required
+def restart_application():
+    """Restart the Flask application."""
+    import sys
+    import os
+    
+    # Check if running in Docker
+    is_docker = os.path.exists('/.dockerenv')
+    
+    flash('Restarting application... Please wait a few seconds and refresh the page.', 'success')
+    
+    # Use a background thread to exit after sending the response
+    def exit_app():
+        import time
+        time.sleep(0.5)  # Give time for response to be sent
+        os._exit(0)  # Force exit (Docker will restart the container)
+    
+    import threading
+    threading.Thread(target=exit_app, daemon=True).start()
+    
+    return redirect(url_for('admin.dashboard'))
+
+
+@admin_bp.route('/users')
+@login_required
+def manage_users():
+    """Manage admin users."""
+    admin_config = load_admin_config()
+    users = admin_config.get('users', [])
+    current_user = session.get('admin_username', '')
+    
+    return render_template_string(USER_MANAGEMENT_TEMPLATE, users=users, current_user=current_user)
+
+
+@admin_bp.route('/users/add', methods=['GET', 'POST'])
+@login_required
+def add_user():
+    """Add a new admin user."""
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+        confirm_password = request.form.get('confirm_password', '')
+        enable_2fa = request.form.get('enable_2fa') == 'on'
+        
+        # Validate
+        if not username:
+            flash('Username is required', 'error')
+            return render_template_string(USER_FORM_TEMPLATE, user=None, action='Add')
+        
+        if len(password) < 6:
+            flash('Password must be at least 6 characters', 'error')
+            return render_template_string(USER_FORM_TEMPLATE, user=None, action='Add')
+        
+        if password != confirm_password:
+            flash('Passwords do not match', 'error')
+            return render_template_string(USER_FORM_TEMPLATE, user=None, action='Add')
+        
+        # Check if username already exists
+        admin_config = load_admin_config()
+        if any(u['username'] == username for u in admin_config.get('users', [])):
+            flash('Username already exists', 'error')
+            return render_template_string(USER_FORM_TEMPLATE, user=None, action='Add')
+        
+        # Create new user
+        new_user = {
+            'username': username,
+            'password_hash': hash_password(password),
+            '2fa_enabled': enable_2fa,
+            '2fa_secret': pyotp.random_base32() if enable_2fa else ''
+        }
+        
+        admin_config['users'].append(new_user)
+        save_admin_config(admin_config)
+        
+        flash(f'User "{username}" added successfully!', 'success')
+        return redirect(url_for('admin.manage_users'))
+    
+    return render_template_string(USER_FORM_TEMPLATE, user=None, action='Add')
+
+
+@admin_bp.route('/users/edit/<username>', methods=['GET', 'POST'])
+@login_required
+def edit_user(username):
+    """Edit an admin user."""
+    admin_config = load_admin_config()
+    users = admin_config.get('users', [])
+    
+    # Find user
+    user_index = None
+    user = None
+    for i, u in enumerate(users):
+        if u['username'] == username:
+            user_index = i
+            user = u
+            break
+    
+    if user is None:
+        flash('User not found', 'error')
+        return redirect(url_for('admin.manage_users'))
+    
+    if request.method == 'POST':
+        password = request.form.get('password', '')
+        confirm_password = request.form.get('confirm_password', '')
+        enable_2fa = request.form.get('enable_2fa') == 'on'
+        
+        # Update password if provided
+        if password:
+            if len(password) < 6:
+                flash('Password must be at least 6 characters', 'error')
+                return render_template_string(USER_FORM_TEMPLATE, user=user, action='Edit')
+            
+            if password != confirm_password:
+                flash('Passwords do not match', 'error')
+                return render_template_string(USER_FORM_TEMPLATE, user=user, action='Edit')
+            
+            users[user_index]['password_hash'] = hash_password(password)
+        
+        # Update 2FA
+        users[user_index]['2fa_enabled'] = enable_2fa
+        if enable_2fa and not users[user_index].get('2fa_secret'):
+            users[user_index]['2fa_secret'] = pyotp.random_base32()
+        
+        save_admin_config(admin_config)
+        flash(f'User "{username}" updated successfully!', 'success')
+        return redirect(url_for('admin.manage_users'))
+    
+    return render_template_string(USER_FORM_TEMPLATE, user=user, action='Edit')
+
+
+@admin_bp.route('/users/delete/<username>', methods=['POST'])
+@login_required
+def delete_user(username):
+    """Delete an admin user."""
+    current_user = session.get('admin_username', '')
+    
+    # Prevent deleting yourself
+    if username == current_user:
+        flash('Cannot delete your own account', 'error')
+        return redirect(url_for('admin.manage_users'))
+    
+    admin_config = load_admin_config()
+    users = admin_config.get('users', [])
+    
+    # Find and remove user
+    admin_config['users'] = [u for u in users if u['username'] != username]
+    
+    save_admin_config(admin_config)
+    flash(f'User "{username}" deleted successfully!', 'success')
+    return redirect(url_for('admin.manage_users'))
 
 
 @admin_bp.route('/security', methods=['GET', 'POST'])
@@ -488,6 +659,12 @@ DASHBOARD_TEMPLATE = '''
         .nav a:hover, .nav button:hover {
             background: #5568d3;
         }
+        .nav .restart-btn {
+            background: #f39c12;
+        }
+        .nav .restart-btn:hover {
+            background: #e67e22;
+        }
         .nav .logout {
             background: #e74c3c;
         }
@@ -601,8 +778,12 @@ DASHBOARD_TEMPLATE = '''
         <div class="header">
             <h1>🛠️ Admin Dashboard</h1>
             <div class="nav">
+                <a href="{{ url_for('admin.manage_users') }}">👥 Users</a>
                 <a href="{{ url_for('admin.security_settings') }}">🔐 Security</a>
                 <a href="/" target="_blank">🏠 Main Site</a>
+                <form method="POST" action="{{ url_for('admin.restart_application') }}" style="display: inline;">
+                    <button type="submit" class="restart-btn" onclick="return confirm('Are you sure you want to restart the application? This will take a few seconds.');">🔄 Restart</button>
+                </form>
                 <a href="{{ url_for('admin.logout') }}" class="logout">Logout</a>
             </div>
         </div>
@@ -1207,3 +1388,374 @@ def generate_qr_code(provisioning_uri):
     buffer.seek(0)
     
     return base64.b64encode(buffer.getvalue()).decode()
+
+
+# User Management Templates
+USER_MANAGEMENT_TEMPLATE = '''
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Manage Users - WOL Gateway</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        h1 { color: #333; font-size: 24px; }
+        .nav {
+            display: flex;
+            gap: 15px;
+        }
+        .nav a, .nav button {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .nav a:hover, .nav button:hover {
+            background: #5568d3;
+        }
+        .card {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 20px;
+        }
+        .alert {
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border-left: 4px solid #28a745;
+        }
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border-left: 4px solid #dc3545;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th {
+            text-align: left;
+            padding: 12px;
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #e0e0e0;
+            color: #555;
+        }
+        tr:hover {
+            background: #f8f9fa;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .badge-success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .badge-secondary {
+            background: #e2e3e5;
+            color: #383d41;
+        }
+        .actions {
+            display: flex;
+            gap: 10px;
+        }
+        .btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn-edit {
+            background: #3498db;
+            color: white;
+        }
+        .btn-edit:hover {
+            background: #2980b9;
+        }
+        .btn-delete {
+            background: #e74c3c;
+            color: white;
+        }
+        .btn-delete:hover {
+            background: #c0392b;
+        }
+        .btn-add {
+            background: #27ae60;
+            color: white;
+            padding: 10px 20px;
+            margin-bottom: 15px;
+            display: inline-block;
+        }
+        .btn-add:hover {
+            background: #229954;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>👥 User Management</h1>
+            <div class="nav">
+                <a href="{{ url_for('admin.dashboard') }}">← Back to Dashboard</a>
+            </div>
+        </div>
+        
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        
+        <div class="card">
+            <h2>Admin Users</h2>
+            <a href="{{ url_for('admin.add_user') }}" class="btn btn-add">➕ Add New User</a>
+            
+            {% if users %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>2FA Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr>
+                        <td>
+                            <strong>{{ user.username }}</strong>
+                            {% if user.username == current_user %}
+                            <span class="badge badge-success">You</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if user['2fa_enabled'] %}
+                            <span class="badge badge-success">✓ Enabled</span>
+                            {% else %}
+                            <span class="badge badge-secondary">Disabled</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="actions">
+                                <a href="{{ url_for('admin.edit_user', username=user.username) }}" 
+                                   class="btn btn-edit">Edit</a>
+                                {% if user.username != current_user %}
+                                <form method="POST" 
+                                      action="{{ url_for('admin.delete_user', username=user.username) }}"
+                                      style="display: inline;"
+                                      onsubmit="return confirm('Are you sure you want to delete {{ user.username }}?');">
+                                    <button type="submit" class="btn btn-delete">Delete</button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p style="color: #999; text-align: center; padding: 40px;">No users configured yet.</p>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>
+'''
+
+USER_FORM_TEMPLATE = '''
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ action }} User - WOL Gateway</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .card {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+        .alert {
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border-left: 4px solid #dc3545;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+        }
+        input[type="text"],
+        input[type="password"] {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+        }
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover {
+            background: #5568d3;
+        }
+        .cancel-link {
+            display: block;
+            text-align: center;
+            margin-top: 15px;
+            color: #667eea;
+            text-decoration: none;
+        }
+        .note {
+            color: #666;
+            font-size: 13px;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>{{ action }} Admin User</h1>
+            
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+            
+            <form method="POST">
+                {% if action == 'Add' %}
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" required autofocus>
+                </div>
+                {% else %}
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" value="{{ user.username }}" disabled>
+                    <p class="note">Username cannot be changed</p>
+                </div>
+                {% endif %}
+                
+                <div class="form-group">
+                    <label for="password">Password{% if action == 'Edit' %} (leave blank to keep current){% endif %}</label>
+                    <input type="password" id="password" name="password" {% if action == 'Add' %}required{% endif %} minlength="6">
+                    <p class="note">Minimum 6 characters</p>
+                </div>
+                
+                <div class="form-group">
+                    <label for="confirm_password">Confirm Password</label>
+                    <input type="password" id="confirm_password" name="confirm_password" {% if action == 'Add' %}required{% endif %}>
+                </div>
+                
+                <div class="form-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="enable_2fa" name="enable_2fa" 
+                               {% if user and user['2fa_enabled'] %}checked{% endif %}>
+                        <label for="enable_2fa" style="margin: 0;">Enable Two-Factor Authentication (2FA)</label>
+                    </div>
+                </div>
+                
+                <button type="submit">{{ action }} User</button>
+            </form>
+            
+            <a href="{{ url_for('admin.manage_users') }}" class="cancel-link">Cancel</a>
+        </div>
+    </div>
+</body>
+</html>
+'''

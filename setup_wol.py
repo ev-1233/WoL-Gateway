@@ -495,6 +495,8 @@ def setup_admin_panel():
     if enable_choice and enable_choice not in ('y', 'yes'):
         # Disable admin panel
         admin_config['admin_enabled'] = False
+        if 'users' not in admin_config:
+            admin_config['users'] = []
         with open(ADMIN_CONFIG_FILE, 'w') as f:
             json.dump(admin_config, f, indent=4)
         print("Admin panel disabled. You can use setup_wol.py to make changes.")
@@ -503,10 +505,14 @@ def setup_admin_panel():
     # Admin panel is enabled
     admin_config['admin_enabled'] = True
     
+    # Initialize users array if not present
+    if 'users' not in admin_config:
+        admin_config['users'] = []
+    
     # Set username
-    default_username = admin_config.get('admin_username', 'admin')
+    default_username = 'admin'
     username_input = input(f"\nAdmin Username [{default_username}]: ").strip()
-    admin_config['admin_username'] = username_input if username_input else default_username
+    username = username_input if username_input else default_username
     
     # Set password
     while True:
@@ -522,7 +528,6 @@ def setup_admin_panel():
         
         # Hash the password
         password_hash = hashlib.sha256(password.encode()).hexdigest()
-        admin_config['admin_password_hash'] = password_hash
         break
     
     # Ask about 2FA
@@ -541,16 +546,35 @@ def setup_admin_panel():
         
         # Generate a new secret
         secret = pyotp.random_base32()
-        admin_config['2fa_secret'] = secret
-        admin_config['2fa_enabled'] = False  # Will be enabled after verification in web UI
+        twofa_enabled = False  # Will be enabled after verification in web UI
         
         print("\n✓ 2FA secret generated!")
         print("\nYou'll need to scan a QR code after starting the server.")
         print("Access the admin panel at: http://<server-ip>:<port>/admin")
         print("Then go to Security Settings to complete 2FA setup.")
     else:
-        admin_config['2fa_enabled'] = False
-        admin_config['2fa_secret'] = ''
+        twofa_enabled = False
+        secret = ''
+    
+    # Create or update user in users array
+    user = {
+        'username': username,
+        'password_hash': password_hash,
+        '2fa_enabled': twofa_enabled,
+        '2fa_secret': secret
+    }
+    
+    # Check if user already exists and update, otherwise append
+    existing_user_index = None
+    for i, u in enumerate(admin_config['users']):
+        if u['username'] == username:
+            existing_user_index = i
+            break
+    
+    if existing_user_index is not None:
+        admin_config['users'][existing_user_index] = user
+    else:
+        admin_config['users'].append(user)
     
     # Save admin configuration
     try:
@@ -558,7 +582,7 @@ def setup_admin_panel():
             json.dump(admin_config, f, indent=4)
         
         print("\n✓ Admin panel configured successfully!")
-        print(f"\nUsername: {admin_config['admin_username']}")
+        print(f"\nUsername: {username}")
         print("Access URL: http://<server-ip>:<port>/admin")
         
         return True
@@ -1208,30 +1232,78 @@ def main():
             print("\n⚠ Admin panel setup failed. Falling back to setup script.")
             use_admin_panel = False
     
+    # Track if we need to configure servers
+    config_done = False
+    
     # If using setup script OR admin panel setup failed, do traditional config
     if not use_admin_panel:
         # Traditional configuration mode
         configure_servers_traditional(current_config, default_port, 
                                      docker_available, choice)
+        config_done = True
     else:
-        # Admin panel mode - still need basic config
-        print("\n" + "="*50)
-        print("      Initial Server Configuration")
-        print("="*50)
-        print("\nYou'll configure at least one server now.")
-        print("You can add more servers later through the admin panel.\n")
+        # Admin panel mode - check if we have existing servers
+        existing_servers = current_config.get("SERVERS", [])
         
-        configure_servers_traditional(current_config, default_port,
-                                     docker_available, choice)
+        if existing_servers:
+            # We have existing servers, make configuration optional
+            print("\n" + "="*50)
+            print("      Initial Server Configuration")
+            print("="*50)
+            print(f"\nFound {len(existing_servers)} existing server(s):")
+            for idx, srv in enumerate(existing_servers, 1):
+                print(f"  {idx}. {srv.get('NAME', 'Unnamed')} - {srv.get('WOL_MAC_ADDRESS', 'N/A')}")
+            
+            print("\nYou can manage all servers through the admin panel.")
+            configure_now = input("\nConfigure servers now anyway? [y/N]: ").strip().lower()
+            
+            if configure_now in ('y', 'yes'):
+                configure_servers_traditional(current_config, default_port,
+                                             docker_available, choice)
+                config_done = True
+        else:
+            # No existing servers, need at least one
+            print("\n" + "="*50)
+            print("      Initial Server Configuration")
+            print("="*50)
+            print("\nYou'll configure at least one server now.")
+            print("You can add more servers later through the admin panel.\n")
+            
+            configure_servers_traditional(current_config, default_port,
+                                         docker_available, choice)
+            config_done = True
+    
+    # =================================================================
+    # Handle deployment - only if config was done traditionally
+    # or we're in admin panel mode (which may skip server config)
+    # =================================================================
+    if not config_done:
+        # Admin panel mode with existing servers, user skipped config
+        # We still need to deploy if using Docker
+        if docker_available and choice == '1':
+            print("\n" + "="*50)
+            print("      Docker Deployment")
+            print("="*50)
+            if not setup_with_docker():
+                print("\n[WARNING] Docker setup failed.")
+                print("You can try running manually:")
+                print("  cd .docker && docker compose up -d")
         
+        # Print final message for admin panel mode
         print("\n" + "="*50)
         print("  ✓ Setup Complete!")
         print("="*50)
         print("\nNext steps:")
-        print("  1. Start the WOL Gateway: ./start.sh")
-        print("  2. Access admin panel: http://<server-ip>:<port>/admin")
-        print("  3. Log in with the credentials you just created")
-        print("  4. Configure additional servers if needed")
+        if docker_available and choice == '1':
+            print("  1. Docker container should now be running")
+            print("  2. Access admin panel: http://<server-ip>:<port>/admin")
+            print("  3. Log in with the credentials you just created")
+            print("  4. Configure additional servers if needed")
+        else:
+            print("  1. Start the WOL Gateway: ./start.sh")
+            print("  2. Access admin panel: http://<server-ip>:<port>/admin")
+            print("  3. Log in with the credentials you just created")
+            print("  4. Configure additional servers if needed")
 
 
 def configure_servers_traditional(current_config, default_port, 
