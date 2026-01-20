@@ -24,7 +24,7 @@ import time
 import json
 import os
 import secrets
-from flask import Flask, redirect, Response
+from flask import Flask, redirect, Response, request
 
 # =================================================================
 #                         USER CONFIGURATION
@@ -97,6 +97,12 @@ def load_config():
                     raise ValueError(f"Server #{idx+1}: WAIT_TIME_SECONDS must be greater than zero.")
             except (TypeError, ValueError) as e:
                 raise ValueError(f"Server #{idx+1}: WAIT_TIME_SECONDS must be a positive integer.") from e
+            
+            # Set default values for optional fields (locked and pin)
+            if "locked" not in server:
+                server["locked"] = False
+            if "pin" not in server:
+                server["pin"] = ""
         
         # Extract and validate port number
         port_raw = user_config.get("PORT")
@@ -183,6 +189,151 @@ except Exception as e:
 # =================================================================
 # This function generates HTML pages dynamically for each server
 
+def generate_pin_entry_page(server_name, server_id, error_message=None):
+    """
+    Generates a PIN entry page for locked servers.
+    
+    Args:
+        server_name (str): Name of the server requiring PIN
+        server_id (int): ID of the server
+        error_message (str, optional): Error message to display
+    
+    Returns:
+        str: HTML content for the PIN entry page
+    """
+    error_html = ""
+    if error_message:
+        error_html = f'<div class="error-message">{error_message}</div>'
+    
+    return f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Enter PIN - {server_name}</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        :root {{
+            --bg-color: #f0f0f0;
+            --card-bg: #ffffff;
+            --text-color: #333333;
+            --heading-color: #2c3e50;
+            --button-bg: #3498db;
+            --button-hover: #2980b9;
+            --border-color: #e0e0e0;
+            --error-bg: #e74c3c;
+            --shadow: rgba(0,0,0,0.1);
+        }}
+        [data-theme="dark"] {{
+            --bg-color: #1a1a1a;
+            --card-bg: #2d2d2d;
+            --text-color: #e0e0e0;
+            --heading-color: #e0e0e0;
+            --button-bg: #3498db;
+            --button-hover: #2980b9;
+            --border-color: #404040;
+            --error-bg: #c0392b;
+            --shadow: rgba(0,0,0,0.3);
+        }}
+        body {{ 
+            font-family: sans-serif; 
+            text-align: center; 
+            margin-top: 50px; 
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            transition: background-color 0.3s, color 0.3s;
+        }}
+        .container {{ 
+            background: var(--card-bg); 
+            padding: 40px; 
+            border-radius: 10px; 
+            box-shadow: 0 4px 8px var(--shadow); 
+            display: inline-block; 
+            min-width: 400px;
+            transition: background-color 0.3s;
+        }}
+        h1 {{ 
+            color: var(--heading-color); 
+            margin-bottom: 30px;
+        }}
+        .lock-icon {{
+            font-size: 48px;
+            color: var(--heading-color);
+            margin-bottom: 20px;
+        }}
+        .form-group {{
+            margin: 20px 0;
+        }}
+        input[type="password"] {{
+            width: 100%;
+            padding: 15px;
+            font-size: 24px;
+            text-align: center;
+            border: 2px solid var(--border-color);
+            border-radius: 5px;
+            background: var(--card-bg);
+            color: var(--text-color);
+            letter-spacing: 8px;
+        }}
+        input[type="password"]:focus {{
+            outline: none;
+            border-color: var(--button-bg);
+        }}
+        .button {{ 
+            background-color: var(--button-bg); 
+            color: white; 
+            padding: 15px 40px; 
+            text-align: center; 
+            text-decoration: none; 
+            display: inline-block; 
+            font-size: 16px; 
+            margin: 20px 5px; 
+            cursor: pointer; 
+            border: none; 
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }}
+        .button:hover {{ background-color: var(--button-hover); }}
+        .button.cancel {{ background-color: #95a5a6; }}
+        .button.cancel:hover {{ background-color: #7f8c8d; }}
+        .error-message {{
+            background-color: var(--error-bg);
+            color: white;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }}
+        .help-text {{
+            color: var(--text-color);
+            font-size: 14px;
+            margin-top: 10px;
+            opacity: 0.7;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="lock-icon"><i class="fas fa-lock"></i></div>
+        <h1>🔒 {server_name}</h1>
+        {error_html}
+        <p class="help-text">This server is locked. Please enter the PIN to start it.</p>
+        <form method="POST" action="/wake/{server_id}">
+            <div class="form-group">
+                <input type="password" name="pin" id="pin" placeholder="Enter PIN" 
+                       maxlength="10" pattern="[0-9]*" inputmode="numeric" 
+                       autocomplete="off" required autofocus>
+            </div>
+            <button type="submit" class="button">Unlock & Start</button>
+            <a href="/" class="button cancel">Cancel</a>
+        </form>
+    </div>
+    <script>
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+    </script>
+</body>
+</html>
+    """
+
 def generate_waiting_page(server_name, site_url, wait_time):
     """
     Generates a waiting page HTML for a specific server.
@@ -268,21 +419,22 @@ def find_wakeonlan_command():
     
     return None
 
-@app.route('/wake/<server_id>', methods=['GET'])
+@app.route('/wake/<server_id>', methods=['GET', 'POST'])
 def wake_server_and_redirect(server_id):
     """
     Endpoint that triggers Wake-on-LAN for a specific server and displays the waiting page.
     
     When a user visits http://<server>:<port>/wake/<server_id>, this function:
       1. Finds the server configuration by ID (0-based index)
-      2. Sends a WOL magic packet to wake the sleeping server
-      3. Returns an HTML page with auto-redirect after server's wait time
+      2. If server is locked, prompts for PIN (GET) or validates PIN (POST)
+      3. Sends a WOL magic packet to wake the sleeping server
+      4. Returns an HTML page with auto-redirect after server's wait time
     
     Args:
         server_id (str): The index (0-based) of the server to wake
     
     Returns:
-        Response: HTML waiting page (200) or error message (400/500)
+        Response: HTML waiting page (200), PIN entry page, or error message (400/500)
     """
     
     # Validate server_id
@@ -300,6 +452,24 @@ def wake_server_and_redirect(server_id):
     broadcast_address = server["BROADCAST_ADDRESS"]
     site_url = server["SITE_URL"]
     wait_time = server["WAIT_TIME_SECONDS"]
+    is_locked = server.get("locked", False)
+    server_pin = server.get("pin", "")
+    
+    # Check if server is locked and requires PIN
+    if is_locked and server_pin:
+        if request.method == 'GET':
+            # Show PIN entry page
+            return Response(generate_pin_entry_page(server_name, idx), mimetype='text/html')
+        elif request.method == 'POST':
+            # Validate PIN
+            entered_pin = request.form.get('pin', '').strip()
+            if entered_pin != server_pin:
+                # Incorrect PIN - show error
+                return Response(
+                    generate_pin_entry_page(server_name, idx, "Incorrect PIN. Please try again."),
+                    mimetype='text/html'
+                ), 401
+            # PIN is correct, proceed to wake the server
     
     # =================================================================
     # Step 1: Send the Wake-on-LAN Magic Packet
@@ -361,10 +531,13 @@ def home():
     for idx, server in enumerate(SERVERS):
         server_name = server["NAME"]
         wait_time = server["WAIT_TIME_SECONDS"]
+        is_locked = server.get("locked", False)
+        lock_icon = "🔒 " if is_locked else ""
+        button_text = "Unlock & Start" if is_locked else "Start Server"
         server_buttons_html += f"""
         <div class="server-card">
-            <h2>{server_name}</h2>
-            <a href="/wake/{idx}" class="button">Start Server</a>
+            <h2>{lock_icon}{server_name}</h2>
+            <a href="/wake/{idx}" class="button">{button_text}</a>
             <p class="server-info">Wait time: ~{wait_time} seconds</p>
         </div>
         """

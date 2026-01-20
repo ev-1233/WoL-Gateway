@@ -188,13 +188,19 @@ def add_server():
         with open(CONFIG_FILE, 'r') as f:
             config = json.load(f)
         
+        # Get locked status and PIN
+        is_locked = request.form.get('locked') == 'on'
+        pin = request.form.get('pin', '').strip()
+        
         # Create new server entry
         new_server = {
             "NAME": request.form.get('name', '').strip(),
             "WOL_MAC_ADDRESS": request.form.get('mac', '').strip(),
             "BROADCAST_ADDRESS": request.form.get('broadcast', '255.255.255.255').strip(),
             "SITE_URL": request.form.get('url', '').strip(),
-            "WAIT_TIME_SECONDS": int(request.form.get('wait_time', 60))
+            "WAIT_TIME_SECONDS": int(request.form.get('wait_time', 60)),
+            "locked": is_locked,
+            "pin": pin if is_locked else ""
         }
         
         # Add to servers list
@@ -225,12 +231,17 @@ def edit_server(server_id):
     
     if request.method == 'POST':
         # Update server entry
+        is_locked = request.form.get('locked') == 'on'
+        pin = request.form.get('pin', '').strip()
+        
         servers[server_id] = {
             "NAME": request.form.get('name', '').strip(),
             "WOL_MAC_ADDRESS": request.form.get('mac', '').strip(),
             "BROADCAST_ADDRESS": request.form.get('broadcast', '255.255.255.255').strip(),
             "SITE_URL": request.form.get('url', '').strip(),
-            "WAIT_TIME_SECONDS": int(request.form.get('wait_time', 60))
+            "WAIT_TIME_SECONDS": int(request.form.get('wait_time', 60)),
+            "locked": is_locked,
+            "pin": pin if is_locked else ""
         }
         
         # Save config
@@ -919,6 +930,7 @@ DASHBOARD_TEMPLATE = '''
                         <th>Broadcast Address</th>
                         <th>Site URL</th>
                         <th>Wait Time</th>
+                        <th>Status</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -931,6 +943,13 @@ DASHBOARD_TEMPLATE = '''
                         <td>{{ server.BROADCAST_ADDRESS }}</td>
                         <td>{{ server.SITE_URL }}</td>
                         <td>{{ server.WAIT_TIME_SECONDS }}s</td>
+                        <td>
+                            {% if server.get('locked', False) %}
+                                <span style="color: #e74c3c;"><i class="fas fa-lock"></i> Locked</span>
+                            {% else %}
+                                <span style="color: #27ae60;"><i class="fas fa-lock-open"></i> Open</span>
+                            {% endif %}
+                        </td>
                         <td>
                             <div class="actions">
                                 <a href="{{ url_for('admin.edit_server', server_id=loop.index0) }}" 
@@ -1127,6 +1146,27 @@ SERVER_FORM_TEMPLATE = '''
                     <div class="help-text">How long to wait before redirecting (typically 30-120 seconds)</div>
                 </div>
                 
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="locked" name="locked" 
+                               {% if server and server.get('locked', False) %}checked{% endif %}
+                               style="margin-right: 10px; width: auto; cursor: pointer;"
+                               onchange="togglePinField()">
+                        <span><i class="fas fa-lock"></i> Lock Server (Require PIN to start)</span>
+                    </label>
+                    <div class="help-text">When locked, users must enter a PIN before starting the server</div>
+                </div>
+                
+                <div class="form-group" id="pin-group" style="display: {% if server and server.get('locked', False) %}block{% else %}none{% endif %};">
+                    <label for="pin">Server PIN</label>
+                    <input type="text" id="pin" name="pin" 
+                           pattern="[0-9]*" inputmode="numeric"
+                           maxlength="10"
+                           value="{{ server.get('pin', '') if server else '' }}"
+                           placeholder="Enter numeric PIN">
+                    <div class="help-text">Numeric PIN (up to 10 digits) required to unlock and start this server</div>
+                </div>
+                
                 <div class="button-group">
                     <button type="submit"><i class="fas fa-save"></i> Save Server</button>
                     <a href="{{ url_for('admin.dashboard') }}" class="btn-link">Cancel</a>
@@ -1135,6 +1175,15 @@ SERVER_FORM_TEMPLATE = '''
         </div>
     </div>
     <script>
+        function togglePinField() {
+            const locked = document.getElementById('locked').checked;
+            const pinGroup = document.getElementById('pin-group');
+            pinGroup.style.display = locked ? 'block' : 'none';
+            if (!locked) {
+                document.getElementById('pin').value = '';
+            }
+        }
+        
         const savedTheme = localStorage.getItem('theme') || 'light';
         document.documentElement.setAttribute('data-theme', savedTheme);
     </script>
