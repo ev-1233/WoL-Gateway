@@ -508,28 +508,63 @@ LOGIN_TEMPLATE = '''
 <head>
     <title>Admin Login - WOL Gateway</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #333333;
+            --card-bg: #ffffff;
+            --border-color: #e0e0e0;
+            --input-bg: #ffffff;
+            --shadow: rgba(0,0,0,0.2);
+        }
+        [data-theme="dark"] {
+            --bg-color: #1a1a1a;
+            --text-color: #e0e0e0;
+            --card-bg: #2d2d2d;
+            --border-color: #404040;
+            --input-bg: #3d3d3d;
+            --shadow: rgba(0,0,0,0.5);
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: var(--bg-color);
+            color: var(--text-color);
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
             padding: 20px;
+            transition: background-color 0.3s, color 0.3s;
         }
         .login-container {
-            background: white;
+            background: var(--card-bg);
             padding: 40px;
             border-radius: 10px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            box-shadow: 0 10px 40px var(--shadow);
             width: 100%;
             max-width: 400px;
+            position: relative;
+        }
+        .theme-toggle {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 5px;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+        }
+        .theme-toggle:hover {
+            opacity: 1;
         }
         h1 {
             text-align: center;
-            color: #333;
+            color: var(--text-color);
             margin-bottom: 30px;
             font-size: 24px;
         }
@@ -539,16 +574,18 @@ LOGIN_TEMPLATE = '''
         label {
             display: block;
             margin-bottom: 5px;
-            color: #555;
+            color: var(--text-color);
             font-weight: 500;
         }
         input[type="text"], input[type="password"] {
             width: 100%;
             padding: 12px;
-            border: 2px solid #e0e0e0;
+            border: 2px solid var(--border-color);
             border-radius: 5px;
             font-size: 14px;
             transition: border-color 0.3s;
+            background: var(--input-bg);
+            color: var(--text-color);
         }
         input[type="text"]:focus, input[type="password"]:focus {
             outline: none;
@@ -569,6 +606,9 @@ LOGIN_TEMPLATE = '''
         button:hover {
             transform: translateY(-2px);
         }
+        button:active {
+            transform: translateY(0);
+        }
         .error {
             background: #fee;
             color: #c33;
@@ -586,7 +626,8 @@ LOGIN_TEMPLATE = '''
 </head>
 <body>
     <div class="login-container">
-        <div class="lock-icon">🔒</div>
+        <button class="theme-toggle" onclick="toggleTheme()" title="Toggle dark mode"><i class="fas fa-moon"></i></button>
+        <div class="lock-icon"><i class="fas fa-lock"></i></div>
         <h1>WOL Gateway Admin</h1>
         {% if error %}
         <div class="error">{{ error }}</div>
@@ -610,6 +651,25 @@ LOGIN_TEMPLATE = '''
             <button type="submit">Login</button>
         </form>
     </div>
+    <script>
+        function toggleTheme() {
+            const html = document.documentElement;
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon();
+        }
+        function updateThemeIcon() {
+            const theme = document.documentElement.getAttribute('data-theme');
+            const toggle = document.querySelector('.theme-toggle i');
+            toggle.className = theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+        }
+        // Load theme on page load
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+        updateThemeIcon();
+    </script>
 </body>
 </html>
 '''
@@ -618,8 +678,9 @@ DASHBOARD_TEMPLATE = '''
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Admin Dashboard - WOL Gateway</title>
+    <title>Admin Dash - WOL Gateway</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -682,49 +743,49 @@ DASHBOARD_TEMPLATE = '''
             border-left: 4px solid #28a745;
         }
         .card {
-            background: white;
+            background: var(--card-bg);
             padding: 20px;
             border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 10px var(--shadow);
             margin-bottom: 20px;
         }
         .card h2 {
-            color: #333;
+            color: var(--text-color);
             margin-bottom: 15px;
             font-size: 20px;
         }
         .info-box {
-            background: #f8f9fa;
+            background: var(--hover-bg);
             padding: 15px;
             border-radius: 5px;
             margin-bottom: 20px;
         }
         .info-box p {
             margin: 5px 0;
-            color: #555;
+            color: var(--text-color);
         }
         .info-box strong {
-            color: #333;
+            color: var(--text-color);
         }
         table {
             width: 100%;
             border-collapse: collapse;
         }
         th {
-            background: #f8f9fa;
+            background: var(--hover-bg);
             padding: 12px;
             text-align: left;
             font-weight: 600;
-            color: #333;
-            border-bottom: 2px solid #e0e0e0;
+            color: var(--text-color);
+            border-bottom: 2px solid var(--border-color);
         }
         td {
             padding: 12px;
-            border-bottom: 1px solid #e0e0e0;
-            color: #555;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-color);
         }
         tr:hover {
-            background: #f8f9fa;
+            background: var(--hover-bg);
         }
         .actions {
             display: flex;
@@ -776,13 +837,14 @@ DASHBOARD_TEMPLATE = '''
 <body>
     <div class="container">
         <div class="header">
-            <h1>🛠️ Admin Dashboard</h1>
+            <h1><i class="fas fa-cog"></i> Admin Dash</h1>
             <div class="nav">
-                <a href="{{ url_for('admin.manage_users') }}">👥 Users</a>
-                <a href="{{ url_for('admin.security_settings') }}">🔐 Security</a>
-                <a href="/" target="_blank">🏠 Main Site</a>
+                <button class="theme-toggle" onclick="toggleTheme()" title="Toggle dark mode"><i class="fas fa-moon"></i></button>
+                <a href="{{ url_for('admin.manage_users') }}"><i class="fas fa-users"></i> Users</a>
+                <a href="{{ url_for('admin.security_settings') }}"><i class="fas fa-shield-alt"></i> Security</a>
+                <a href="/" target="_blank"><i class="fas fa-home"></i> Home</a>
                 <form method="POST" action="{{ url_for('admin.restart_application') }}" style="display: inline;">
-                    <button type="submit" class="restart-btn" onclick="return confirm('Are you sure you want to restart the application? This will take a few seconds.');">🔄 Restart</button>
+                    <button type="submit" class="restart-btn" onclick="return confirm('Are you sure you want to restart the application? This will take a few seconds.');"><i class="fas fa-sync-alt"></i> Restart</button>
                 </form>
                 <a href="{{ url_for('admin.logout') }}" class="logout">Logout</a>
             </div>
@@ -797,7 +859,7 @@ DASHBOARD_TEMPLATE = '''
         {% endwith %}
         
         <div class="warning">
-            ⚠️ <strong>Important:</strong> Configuration changes require restarting the WOL Gateway application to take effect. The Flask port cannot be changed from the admin panel.
+            <i class="fas fa-exclamation-triangle"></i> <strong>Important:</strong> Configuration changes require restarting the WOL Gateway app.
         </div>
         
         <div class="card">
@@ -810,7 +872,7 @@ DASHBOARD_TEMPLATE = '''
         
         <div class="card">
             <h2>Server Configuration</h2>
-            <a href="{{ url_for('admin.add_server') }}" class="btn btn-add">➕ Add New Server</a>
+            <a href="{{ url_for('admin.add_server') }}" class="btn btn-add"><i class="fas fa-plus"></i> Add New Server</a>
             
             {% if servers %}
             <table>
@@ -855,6 +917,24 @@ DASHBOARD_TEMPLATE = '''
             {% endif %}
         </div>
     </div>
+    <script>
+        function toggleTheme() {
+            const html = document.documentElement;
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon();
+        }
+        function updateThemeIcon() {
+            const theme = document.documentElement.getAttribute('data-theme');
+            const toggle = document.querySelector('.theme-toggle i');
+            toggle.className = theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+        }
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+        updateThemeIcon();
+    </script>
 </body>
 </html>
 '''
@@ -865,30 +945,49 @@ SERVER_FORM_TEMPLATE = '''
 <head>
     <title>{{ action }} Server - WOL Gateway</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
+        :root {
+            --bg-color: #f5f5f5;
+            --text-color: #333333;
+            --card-bg: #ffffff;
+            --border-color: #e0e0e0;
+            --input-bg: #ffffff;
+            --shadow: rgba(0,0,0,0.1);
+        }
+        [data-theme="dark"] {
+            --bg-color: #1a1a1a;
+            --text-color: #e0e0e0;
+            --card-bg: #2d2d2d;
+            --border-color: #404040;
+            --input-bg: #3d3d3d;
+            --shadow: rgba(0,0,0,0.3);
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            background: #f5f5f5;
+            background: var(--bg-color);
+            color: var(--text-color);
             padding: 20px;
+            transition: background-color 0.3s, color 0.3s;
         }
         .container {
             max-width: 800px;
             margin: 0 auto;
         }
         .header {
-            background: white;
+            background: var(--card-bg);
             padding: 20px;
             border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 10px var(--shadow);
             margin-bottom: 20px;
         }
-        h1 { color: #333; font-size: 24px; }
+        h1 { color: var(--text-color); font-size: 24px; }
         .card {
-            background: white;
+            background: var(--card-bg);
             padding: 30px;
             border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 10px var(--shadow);
         }
         .form-group {
             margin-bottom: 20px;
@@ -896,15 +995,17 @@ SERVER_FORM_TEMPLATE = '''
         label {
             display: block;
             margin-bottom: 5px;
-            color: #333;
+            color: var(--text-color);
             font-weight: 500;
         }
         input[type="text"], input[type="number"] {
             width: 100%;
             padding: 12px;
-            border: 2px solid #e0e0e0;
+            border: 2px solid var(--border-color);
             border-radius: 5px;
             font-size: 14px;
+            background: var(--input-bg);
+            color: var(--text-color);
         }
         input[type="text"]:focus, input[type="number"]:focus {
             outline: none;
@@ -992,12 +1093,16 @@ SERVER_FORM_TEMPLATE = '''
                 </div>
                 
                 <div class="button-group">
-                    <button type="submit">💾 Save Server</button>
+                    <button type="submit"><i class="fas fa-save"></i> Save Server</button>
                     <a href="{{ url_for('admin.dashboard') }}" class="btn-link">Cancel</a>
                 </div>
             </form>
         </div>
     </div>
+    <script>
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+    </script>
 </body>
 </html>
 '''
@@ -1008,28 +1113,49 @@ SECURITY_TEMPLATE = '''
 <head>
     <title>Security Settings - WOL Gateway</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
+        :root {
+            --bg-color: #f5f5f5;
+            --text-color: #333333;
+            --card-bg: #ffffff;
+            --border-color: #e0e0e0;
+            --input-bg: #ffffff;
+            --hover-bg: #f8f9fa;
+            --shadow: rgba(0,0,0,0.1);
+        }
+        [data-theme="dark"] {
+            --bg-color: #1a1a1a;
+            --text-color: #e0e0e0;
+            --card-bg: #2d2d2d;
+            --border-color: #404040;
+            --input-bg: #3d3d3d;
+            --hover-bg: #3d3d3d;
+            --shadow: rgba(0,0,0,0.3);
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            background: #f5f5f5;
+            background: var(--bg-color);
+            color: var(--text-color);
             padding: 20px;
+            transition: background-color 0.3s, color 0.3s;
         }
         .container {
             max-width: 800px;
             margin: 0 auto;
         }
         .header {
-            background: white;
+            background: var(--card-bg);
             padding: 20px;
             border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 10px var(--shadow);
             margin-bottom: 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
-        h1 { color: #333; font-size: 24px; }
+        h1 { color: var(--text-color); font-size: 24px; }
         .nav a {
             padding: 10px 20px;
             background: #667eea;
@@ -1056,14 +1182,14 @@ SECURITY_TEMPLATE = '''
             border-left: 4px solid #dc3545;
         }
         .card {
-            background: white;
+            background: var(--card-bg);
             padding: 30px;
             border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 10px var(--shadow);
             margin-bottom: 20px;
         }
         .card h2 {
-            color: #333;
+            color: var(--text-color);
             margin-bottom: 20px;
             font-size: 20px;
         }
@@ -1073,15 +1199,17 @@ SECURITY_TEMPLATE = '''
         label {
             display: block;
             margin-bottom: 5px;
-            color: #333;
+            color: var(--text-color);
             font-weight: 500;
         }
         input[type="password"] {
             width: 100%;
             padding: 12px;
-            border: 2px solid #e0e0e0;
+            border: 2px solid var(--border-color);
             border-radius: 5px;
             font-size: 14px;
+            background: var(--input-bg);
+            color: var(--text-color);
         }
         input[type="password"]:focus {
             outline: none;
@@ -1133,7 +1261,7 @@ SECURITY_TEMPLATE = '''
 <body>
     <div class="container">
         <div class="header">
-            <h1>🔐 Security Settings</h1>
+            <h1><i class="fas fa-shield-alt"></i> Security Settings</h1>
             <div class="nav">
                 <a href="{{ url_for('admin.dashboard') }}">← Back to Dashboard</a>
             </div>
@@ -1172,9 +1300,9 @@ SECURITY_TEMPLATE = '''
             <p style="margin-bottom: 15px;">
                 Status: 
                 {% if two_fa_enabled %}
-                <span class="status-badge status-enabled">✓ Enabled</span>
+                <span class="status-badge status-enabled"><i class="fas fa-check"></i> Enabled</span>
                 {% else %}
-                <span class="status-badge status-disabled">✗ Disabled</span>
+                <span class="status-badge status-disabled"><i class="fas fa-times"></i> Disabled</span>
                 {% endif %}
             </p>
             
@@ -1202,6 +1330,10 @@ SECURITY_TEMPLATE = '''
             {% endif %}
         </div>
     </div>
+    <script>
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+    </script>
 </body>
 </html>
 '''
@@ -1212,25 +1344,46 @@ SETUP_2FA_TEMPLATE = '''
 <head>
     <title>Setup 2FA - WOL Gateway</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
+        :root {
+            --bg-color: #f5f5f5;
+            --text-color: #333333;
+            --card-bg: #ffffff;
+            --border-color: #e0e0e0;
+            --input-bg: #ffffff;
+            --step-bg: #f8f9fa;
+            --shadow: rgba(0,0,0,0.1);
+        }
+        [data-theme="dark"] {
+            --bg-color: #1a1a1a;
+            --text-color: #e0e0e0;
+            --card-bg: #2d2d2d;
+            --border-color: #404040;
+            --input-bg: #3d3d3d;
+            --step-bg: #3d3d3d;
+            --shadow: rgba(0,0,0,0.3);
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            background: #f5f5f5;
+            background: var(--bg-color);
+            color: var(--text-color);
             padding: 20px;
+            transition: background-color 0.3s, color 0.3s;
         }
         .container {
             max-width: 600px;
             margin: 0 auto;
         }
         .card {
-            background: white;
+            background: var(--card-bg);
             padding: 30px;
             border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 10px var(--shadow);
         }
         h1 {
-            color: #333;
+            color: var(--text-color);
             margin-bottom: 20px;
             font-size: 24px;
             text-align: center;
@@ -1238,7 +1391,7 @@ SETUP_2FA_TEMPLATE = '''
         .step {
             margin-bottom: 25px;
             padding: 15px;
-            background: #f8f9fa;
+            background: var(--step-bg);
             border-radius: 5px;
         }
         .step h3 {
@@ -1247,8 +1400,11 @@ SETUP_2FA_TEMPLATE = '''
             font-size: 16px;
         }
         .step p {
-            color: #555;
+            color: var(--text-color);
             line-height: 1.6;
+        }
+        .step ul {
+            color: var(--text-color);
         }
         .qr-container {
             text-align: center;
@@ -1256,7 +1412,7 @@ SETUP_2FA_TEMPLATE = '''
         }
         .qr-container img {
             max-width: 250px;
-            border: 2px solid #e0e0e0;
+            border: 2px solid var(--border-color);
             border-radius: 5px;
             padding: 10px;
             background: white;
@@ -1281,17 +1437,19 @@ SETUP_2FA_TEMPLATE = '''
         label {
             display: block;
             margin-bottom: 5px;
-            color: #333;
+            color: var(--text-color);
             font-weight: 500;
         }
         input[type="text"] {
             width: 100%;
             padding: 12px;
-            border: 2px solid #e0e0e0;
+            border: 2px solid var(--border-color);
             border-radius: 5px;
             font-size: 16px;
             text-align: center;
             letter-spacing: 5px;
+            background: var(--input-bg);
+            color: var(--text-color);
         }
         input[type="text"]:focus {
             outline: none;
@@ -1325,7 +1483,7 @@ SETUP_2FA_TEMPLATE = '''
 <body>
     <div class="container">
         <div class="card">
-            <h1>🔐 Setup Two-Factor Authentication</h1>
+            <h1><i class="fas fa-shield-alt"></i> Setup Two-Factor Authentication</h1>
             
             <div class="step">
                 <h3>Step 1: Install an Authenticator App</h3>
@@ -1361,12 +1519,16 @@ SETUP_2FA_TEMPLATE = '''
                     <input type="text" id="totp_code" name="totp_code" required 
                            pattern="[0-9]{6}" maxlength="6" placeholder="000000" autofocus>
                 </div>
-                <button type="submit">✓ Verify and Enable 2FA</button>
+                <button type="submit"><i class="fas fa-check"></i> Verify and Enable 2FA</button>
             </form>
             
             <a href="{{ url_for('admin.security_settings') }}" class="cancel-link">Cancel</a>
         </div>
     </div>
+    <script>
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+    </script>
 </body>
 </html>
 '''
@@ -1397,6 +1559,7 @@ USER_MANAGEMENT_TEMPLATE = '''
 <head>
     <title>Manage Users - WOL Gateway</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -1438,13 +1601,13 @@ USER_MANAGEMENT_TEMPLATE = '''
             background: #5568d3;
         }
         .card {
-            background: white;
+            background: var(--card-bg);
             padding: 30px;
             border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 10px var(--shadow);
         }
         h2 {
-            color: #333;
+            color: var(--text-color);
             margin-bottom: 20px;
             font-size: 20px;
         }
@@ -1471,18 +1634,18 @@ USER_MANAGEMENT_TEMPLATE = '''
         th {
             text-align: left;
             padding: 12px;
-            background: #f8f9fa;
+            background: var(--hover-bg);
             font-weight: 600;
-            color: #333;
-            border-bottom: 2px solid #e0e0e0;
+            color: var(--text-color);
+            border-bottom: 2px solid var(--border-color);
         }
         td {
             padding: 12px;
-            border-bottom: 1px solid #e0e0e0;
-            color: #555;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-color);
         }
         tr:hover {
-            background: #f8f9fa;
+            background: var(--hover-bg);
         }
         .badge {
             display: inline-block;
@@ -1541,7 +1704,7 @@ USER_MANAGEMENT_TEMPLATE = '''
 <body>
     <div class="container">
         <div class="header">
-            <h1>👥 User Management</h1>
+            <h1><i class="fas fa-users"></i> User Management</h1>
             <div class="nav">
                 <a href="{{ url_for('admin.dashboard') }}">← Back to Dashboard</a>
             </div>
@@ -1557,7 +1720,7 @@ USER_MANAGEMENT_TEMPLATE = '''
         
         <div class="card">
             <h2>Admin Users</h2>
-            <a href="{{ url_for('admin.add_user') }}" class="btn btn-add">➕ Add New User</a>
+            <a href="{{ url_for('admin.add_user') }}" class="btn btn-add"><i class="fas fa-plus"></i> Add New User</a>
             
             {% if users %}
             <table>
@@ -1579,7 +1742,7 @@ USER_MANAGEMENT_TEMPLATE = '''
                         </td>
                         <td>
                             {% if user['2fa_enabled'] %}
-                            <span class="badge badge-success">✓ Enabled</span>
+                            <span class="badge badge-success"><i class="fas fa-check"></i> Enabled</span>
                             {% else %}
                             <span class="badge badge-secondary">Disabled</span>
                             {% endif %}
@@ -1607,6 +1770,10 @@ USER_MANAGEMENT_TEMPLATE = '''
             {% endif %}
         </div>
     </div>
+    <script>
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+    </script>
 </body>
 </html>
 '''
@@ -1617,26 +1784,45 @@ USER_FORM_TEMPLATE = '''
 <head>
     <title>{{ action }} User - WOL Gateway</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
+        :root {
+            --bg-color: #f5f5f5;
+            --text-color: #333333;
+            --card-bg: #ffffff;
+            --border-color: #e0e0e0;
+            --input-bg: #ffffff;
+            --shadow: rgba(0,0,0,0.1);
+        }
+        [data-theme="dark"] {
+            --bg-color: #1a1a1a;
+            --text-color: #e0e0e0;
+            --card-bg: #2d2d2d;
+            --border-color: #404040;
+            --input-bg: #3d3d3d;
+            --shadow: rgba(0,0,0,0.3);
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: var(--bg-color);
+            color: var(--text-color);
             min-height: 100vh;
             padding: 20px;
+            transition: background-color 0.3s, color 0.3s;
         }
         .container {
             max-width: 600px;
             margin: 0 auto;
         }
         .card {
-            background: white;
+            background: var(--card-bg);
             padding: 30px;
             border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 10px var(--shadow);
         }
         h1 {
-            color: #333;
+            color: var(--text-color);
             margin-bottom: 20px;
             font-size: 24px;
         }
@@ -1656,16 +1842,18 @@ USER_FORM_TEMPLATE = '''
         label {
             display: block;
             margin-bottom: 8px;
-            color: #333;
+            color: var(--text-color);
             font-weight: 500;
         }
         input[type="text"],
         input[type="password"] {
             width: 100%;
             padding: 12px;
-            border: 1px solid #ddd;
+            border: 1px solid var(--border-color);
             border-radius: 5px;
             font-size: 14px;
+            background: var(--input-bg);
+            color: var(--text-color);
         }
         input[type="checkbox"] {
             width: 20px;
@@ -1756,6 +1944,10 @@ USER_FORM_TEMPLATE = '''
             <a href="{{ url_for('admin.manage_users') }}" class="cancel-link">Cancel</a>
         </div>
     </div>
+    <script>
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+    </script>
 </body>
 </html>
 '''
