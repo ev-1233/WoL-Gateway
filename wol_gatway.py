@@ -24,7 +24,8 @@ import time
 import json
 import os
 import secrets
-from flask import Flask, redirect, Response, request
+from datetime import datetime, timedelta
+from flask import Flask, redirect, Response, request, session
 
 # =================================================================
 #                         USER CONFIGURATION
@@ -172,6 +173,12 @@ app = Flask(__name__)
 # Set session secret key for admin panel
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(32))
 
+# Configure session to use cookies
+app.config['SESSION_TYPE'] = 'filesystem'
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = False  # Set to True if using HTTPS
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=1)
+
 # Import and register admin panel if enabled
 try:
     from admin_panel import admin_bp, load_admin_config
@@ -183,6 +190,56 @@ except ImportError:
     print(f"[{time.strftime('%H:%M:%S')}] Admin panel module not found")
 except Exception as e:
     print(f"[{time.strftime('%H:%M:%S')}] Error loading admin panel: {e}")
+
+# =================================================================
+#                    SERVER UNLOCK TRACKING
+# =================================================================
+
+def is_server_unlocked(server_id):
+    """
+    Check if a server is unlocked for the current client session.
+    
+    Args:
+        server_id (int): The index of the server
+    
+    Returns:
+        bool: True if server is unlocked or lock expired, False otherwise
+    """
+    if 'unlocked_servers' not in session:
+        return False
+    
+    unlocked = session['unlocked_servers']
+    server_key = str(server_id)
+    
+    if server_key not in unlocked:
+        return False
+    
+    # Check if unlock has expired (24 hours)
+    unlock_time = unlocked[server_key]
+    expiry_time = datetime.fromisoformat(unlock_time) + timedelta(hours=24)
+    
+    if datetime.now() >= expiry_time:
+        # Expired - remove from session
+        del unlocked[server_key]
+        session.modified = True
+        return False
+    
+    return True
+
+def unlock_server(server_id):
+    """
+    Mark a server as unlocked for the current client session.
+    
+    Args:
+        server_id (int): The index of the server to unlock
+    """
+    session.permanent = True
+    
+    if 'unlocked_servers' not in session:
+        session['unlocked_servers'] = {}
+    
+    session['unlocked_servers'][str(server_id)] = datetime.now().isoformat()
+    session.modified = True
 
 # =================================================================
 #                    HTML WAITING PAGE TEMPLATE
@@ -313,16 +370,16 @@ def generate_pin_entry_page(server_name, server_id, error_message=None):
 <body>
     <div class="container">
         <div class="lock-icon"><i class="fas fa-lock"></i></div>
-        <h1>🔒 {server_name}</h1>
+        <h1>{server_name}</h1>
         {error_html}
-        <p class="help-text">This server is locked. Please enter the PIN to start it.</p>
+        <p class="help-text">This server is locked. Please enter the PIN to unlock it.</p>
         <form method="POST" action="/wake/{server_id}">
             <div class="form-group">
                 <input type="password" name="pin" id="pin" placeholder="Enter PIN" 
                        maxlength="10" pattern="[0-9]*" inputmode="numeric" 
                        autocomplete="off" required autofocus>
             </div>
-            <button type="submit" class="button">Unlock & Start</button>
+            <button type="submit" class="button">Unlock</button>
             <a href="/" class="button cancel">Cancel</a>
         </form>
     </div>
@@ -352,23 +409,87 @@ def generate_waiting_page(server_name, site_url, wait_time):
 <head>
     <title>Starting {server_name}...</title>
     <meta http-equiv="refresh" content="{wait_time};url={site_url}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
-        body {{ font-family: sans-serif; text-align: center; margin-top: 50px; background-color: #f0f0f0; }}
-        .container {{ background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); display: inline-block; }}
-        h1 {{ color: #333; }}
-        .server-name {{ color: #3498db; }}
-        .loader {{ border: 8px solid #f3f3f3; border-top: 8px solid #3498db; border-radius: 50%; width: 50px; height: 50px; animation: spin 2s linear infinite; margin: 20px auto; }}
+        :root {{
+            --bg-color: #f0f0f0;
+            --card-bg: #ffffff;
+            --text-color: #333333;
+            --heading-color: #2c3e50;
+            --server-name-color: #3498db;
+            --loader-bg: #f3f3f3;
+            --loader-top: #3498db;
+            --shadow: rgba(0,0,0,0.1);
+        }}
+        [data-theme="dark"] {{
+            --bg-color: #1a1a1a;
+            --card-bg: #2d2d2d;
+            --text-color: #e0e0e0;
+            --heading-color: #e0e0e0;
+            --server-name-color: #5dade2;
+            --loader-bg: #404040;
+            --loader-top: #3498db;
+            --shadow: rgba(0,0,0,0.3);
+        }}
+        body {{ 
+            font-family: sans-serif; 
+            text-align: center; 
+            margin-top: 50px; 
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            transition: background-color 0.3s, color 0.3s;
+        }}
+        .container {{ 
+            background: var(--card-bg); 
+            padding: 30px; 
+            border-radius: 10px; 
+            box-shadow: 0 4px 8px var(--shadow); 
+            display: inline-block;
+            min-width: 400px;
+            transition: background-color 0.3s;
+        }}
+        .start-icon {{
+            font-size: 48px;
+            color: var(--server-name-color);
+            margin-bottom: 20px;
+        }}
+        h1 {{ 
+            color: var(--heading-color); 
+            margin: 20px 0;
+        }}
+        .server-name {{ color: var(--server-name-color); }}
+        .loader {{ 
+            border: 8px solid var(--loader-bg); 
+            border-top: 8px solid var(--loader-top); 
+            border-radius: 50%; 
+            width: 50px; 
+            height: 50px; 
+            animation: spin 2s linear infinite; 
+            margin: 20px auto; 
+        }}
         @keyframes spin {{ 0% {{ transform: rotate(0deg); }} 100% {{ transform: rotate(360deg); }} }}
+        p {{
+            color: var(--text-color);
+            line-height: 1.6;
+        }}
+        strong {{
+            color: var(--heading-color);
+        }}
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🚀 Starting <span class="server-name">{server_name}</span>...</h1>
+        <div class="start-icon"><i class="fas fa-power-off"></i></div>
+        <h1>Starting <span class="server-name">{server_name}</span></h1>
         <div class="loader"></div>
         <p>Sending Wake-on-LAN signal. Please wait approximately <strong>{wait_time} seconds</strong>.</p>
         <p>You will be automatically redirected to your server.</p>
         <p>If the page fails to load, the server may still be booting. Please try refreshing.</p>
     </div>
+    <script>
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+    </script>
 </body>
 </html>
 """
@@ -457,19 +578,29 @@ def wake_server_and_redirect(server_id):
     
     # Check if server is locked and requires PIN
     if is_locked and server_pin:
-        if request.method == 'GET':
-            # Show PIN entry page
-            return Response(generate_pin_entry_page(server_name, idx), mimetype='text/html')
-        elif request.method == 'POST':
-            # Validate PIN
-            entered_pin = request.form.get('pin', '').strip()
-            if entered_pin != server_pin:
-                # Incorrect PIN - show error
-                return Response(
-                    generate_pin_entry_page(server_name, idx, "Incorrect PIN. Please try again."),
-                    mimetype='text/html'
-                ), 401
-            # PIN is correct, proceed to wake the server
+        # Check if server is already unlocked in this session
+        unlocked = is_server_unlocked(idx)
+        print(f"[{time.strftime('%H:%M:%S')}] Server {idx} locked={is_locked}, unlocked_in_session={unlocked}, method={request.method}")
+        
+        if not unlocked:
+            if request.method == 'GET':
+                # Show PIN entry page
+                return Response(generate_pin_entry_page(server_name, idx), mimetype='text/html')
+            elif request.method == 'POST':
+                # Validate PIN
+                entered_pin = request.form.get('pin', '').strip()
+                if entered_pin != server_pin:
+                    # Incorrect PIN - show error
+                    return Response(
+                        generate_pin_entry_page(server_name, idx, "Incorrect PIN. Please try again."),
+                        mimetype='text/html'
+                    ), 401
+                # PIN is correct, unlock the server for 24 hours and redirect to home
+                unlock_server(idx)
+                print(f"[{time.strftime('%H:%M:%S')}] Server {idx} unlocked successfully")
+                return redirect('/')
+        # Server is unlocked in session, proceed to wake it
+        print(f"[{time.strftime('%H:%M:%S')}] Server {idx} already unlocked, proceeding to wake")
     
     # =================================================================
     # Step 1: Send the Wake-on-LAN Magic Packet
@@ -532,12 +663,21 @@ def home():
         server_name = server["NAME"]
         wait_time = server["WAIT_TIME_SECONDS"]
         is_locked = server.get("locked", False)
-        lock_icon = "🔒 " if is_locked else ""
-        button_text = "Unlock & Start" if is_locked else "Start Server"
+        server_is_unlocked = is_server_unlocked(idx)
+        
+        if is_locked and not server_is_unlocked:
+            # Server is locked - show grey button with padlock
+            button_class = "button locked"
+            button_text = '<i class="fas fa-lock"></i> Locked'
+        else:
+            # Server is unlocked or not locked - show normal button
+            button_class = "button"
+            button_text = "Start Server"
+        
         server_buttons_html += f"""
         <div class="server-card">
-            <h2>{lock_icon}{server_name}</h2>
-            <a href="/wake/{idx}" class="button">{button_text}</a>
+            <h2>{server_name}</h2>
+            <a href="/wake/{idx}" class="{button_class}">{button_text}</a>
             <p class="server-info">Wait time: ~{wait_time} seconds</p>
         </div>
         """
@@ -640,6 +780,15 @@ def home():
             transition: background-color 0.3s;
         }}
         .button:hover {{ background-color: var(--button-hover); }}
+        .button.locked {{
+            background-color: #95a5a6;
+            color: #ffffff;
+            opacity: 0.7;
+        }}
+        .button.locked:hover {{
+            background-color: #7f8c8d;
+            opacity: 0.85;
+        }}
         .button.admin {{ 
             background-color: var(--admin-button-bg); 
             margin-top: 20px;
@@ -662,10 +811,10 @@ def home():
 <body>
     <button class="theme-toggle" onclick="toggleTheme()" title="Toggle dark mode"><i class="fas fa-moon"></i></button>
     <div class="container">
-        <h1>🖥️ Server Gateway</h1>
+        <h1><i class="fas fa-server"></i> Server Gateway</h1>
         {server_buttons_html}
         <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid var(--border-color);">
-            <a href="/admin" class="button admin">⚙️ Admin Panel</a>
+            <a href="/admin" class="button admin"><i class="fas fa-cog"></i> Admin Panel</a>
         </div>
         <p class="footer">
             {len(SERVERS)} server{'s' if len(SERVERS) != 1 else ''} configured
