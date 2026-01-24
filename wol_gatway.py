@@ -1196,13 +1196,12 @@ def health_check():
 #                     APPLICATION ENTRY POINT
 # =================================================================
 if __name__ == '__main__':
-    # Start the Flask development server
+    # Start the Flask server
     # host='0.0.0.0' - Binds to all network interfaces (allows external connections)
     #                  Change to '127.0.0.1' if only local access is needed
     # port=PORT - Uses the port specified in the config file
     # debug - Controlled by FLASK_ENV environment variable
-    #         Only enables if FLASK_ENV=development
-    #         Defaults to False (production-safe)
+    #         Only enables if FLASK_ENV=development (defaults to False for production)
     
     # Check environment variable for debug mode (safe default)
     debug_mode = os.environ.get('FLASK_ENV') == 'development'

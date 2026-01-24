@@ -1,3 +1,4 @@
+# Python cache
 *.pyc
 __pycache__/
 *.pyo
@@ -8,7 +9,37 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+
+# Virtual environments
 venv/
 env/
+.venv/
+
+# IDE & Editor
 .vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
 .DS_Store
+Thumbs.db
+desktop.ini
+
+# Git & GitHub
+.git/
+.github/
+.gitignore
+
+# Vagrant
+.vagrant/
+Vagrantfile
+VAGRANT_SETUP.md
+
+# Development scripts
+install.sh
+start.sh
+
+# User config (should be mounted, not copied)
+WOL_Brige.config
+admin_config.json
