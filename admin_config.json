@@ -4,8 +4,24 @@
         {
             "username": "admin",
             "password_hash": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+            "2fa_enabled": true,
+            "2fa_secret": "PEVDCPSCCH2XEGKPTHL3AOETAXPMTAOX",
+            "2fa_setup_complete": true
+        },
+        {
+            "username": "user 3",
+            "password_hash": "65e84be33532fb784c48129675f9eff3a682b27168c0ea744b2cf58ee02337c5",
+            "2fa_enabled": true,
+            "2fa_secret": "XKNEYRSWLTJYOVYXRHRNB56ZD3HP57CL"
+        },
+        {
+            "username": "demo",
+            "password_hash": "65e84be33532fb784c48129675f9eff3a682b27168c0ea744b2cf58ee02337c5",
             "2fa_enabled": false,
-            "2fa_secret": "7INKJQKHGX46HYATGHVSEYKEP6PE45KK"
+            "2fa_secret": "",
+            "2fa_setup_complete": false
         }
-    ]
+    ],
+    "2fa_secret": "HSF3KORVSGOUSB6SBXJB3QXZP5MUBO6N",
+    "2fa_enabled": false
 }

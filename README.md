@@ -2,9 +2,11 @@
 
 Wake-on-LAN gateway service that provides a simple web interface to wake up your servers remotely from anywhere without a vpn.
 
-## Features
+## FOR FLAVOUR TOWN
 
+I am aware that this is a rather niche project that not many will be able to test so i have a video bellow to demo every thing.
 
+[![Demo Video](thumbnail_image_url)](https://youtu.be/Hu5iIX8yUsQ)
 
 ## Installation
 

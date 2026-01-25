@@ -17,10 +17,16 @@ import hashlib
 import secrets
 from functools import wraps
 from flask import Blueprint, render_template_string, request, redirect, url_for, session, flash
-import pyotp
-import qrcode
-from io import BytesIO
-import base64
+
+# Try to import 2FA dependencies
+try:
+    import pyotp
+    import qrcode
+    from io import BytesIO
+    import base64
+    TOTP_AVAILABLE = True
+except ImportError:
+    TOTP_AVAILABLE = False
 
 # Create Blueprint for admin routes
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
@@ -116,7 +122,6 @@ def login():
     if request.method == 'POST':
         username = request.form.get('username', '')
         password = request.form.get('password', '')
-        totp_code = request.form.get('totp_code', '')
         
         # Find user in users array
         user = None
@@ -126,29 +131,120 @@ def login():
                 break
         
         if user:
-            # Check 2FA if enabled for this user
+            # Check if 2FA is enabled for this user
             if user.get('2fa_enabled', False):
-                totp = pyotp.TOTP(user['2fa_secret'])
-                if not totp.verify(totp_code, valid_window=1):
-                    error = "Invalid 2FA code"
-                    return render_template_string(LOGIN_TEMPLATE, error=error, 
-                                                 require_2fa=True)
+                # Check if 2FA setup is complete
+                if not user.get('2fa_setup_complete', False):
+                    # User needs to complete 2FA setup
+                    session['pending_2fa_setup_username'] = username
+                    return redirect(url_for('admin.setup_2fa_initial'))
+                else:
+                    # 2FA is set up, verify code
+                    session['pending_2fa_username'] = username
+                    return redirect(url_for('admin.verify_2fa'))
             
-            # Login successful
+            # Login successful (no 2FA required)
             session['admin_logged_in'] = True
             session['admin_username'] = username
             session.permanent = True
             return redirect(url_for('admin.dashboard'))
         else:
             error = "Invalid username or password"
-            # Check if any user has 2FA to show the field
-            any_2fa = any(u.get('2fa_enabled', False) for u in admin_config.get('users', []))
             return render_template_string(LOGIN_TEMPLATE, error=error,
-                                         require_2fa=any_2fa)
+                                         require_2fa=False)
     
-    # Check if any user has 2FA enabled
-    any_2fa = any(u.get('2fa_enabled', False) for u in admin_config.get('users', []))
-    return render_template_string(LOGIN_TEMPLATE, error=None, require_2fa=any_2fa)
+    # Initial GET request
+    return render_template_string(LOGIN_TEMPLATE, error=None, require_2fa=False)
+
+
+@admin_bp.route('/verify-2fa', methods=['GET', 'POST'])
+def verify_2fa():
+    """2FA verification page."""
+    # Check if user has a pending 2FA verification
+    username = session.get('pending_2fa_username')
+    if not username:
+        return redirect(url_for('admin.login'))
+    
+    admin_config = load_admin_config()
+    user = next((u for u in admin_config.get('users', []) if u['username'] == username), None)
+    
+    if not user or not user.get('2fa_enabled', False):
+        session.pop('pending_2fa_username', None)
+        return redirect(url_for('admin.login'))
+    
+    if request.method == 'POST':
+        totp_code = request.form.get('totp_code', '')
+        
+        if TOTP_AVAILABLE:
+            totp = pyotp.TOTP(user['2fa_secret'])
+            if totp.verify(totp_code, valid_window=1):
+                # 2FA verification successful
+                session.pop('pending_2fa_username', None)
+                session['admin_logged_in'] = True
+                session['admin_username'] = username
+                session.permanent = True
+                return redirect(url_for('admin.dashboard'))
+        
+        error = "Invalid 2FA code. Please try again."
+        return render_template_string(VERIFY_2FA_TEMPLATE, error=error, username=username)
+    
+    # Show 2FA verification form
+    return render_template_string(VERIFY_2FA_TEMPLATE, error=None, username=username)
+
+
+@admin_bp.route('/setup-2fa-initial', methods=['GET', 'POST'])
+def setup_2fa_initial():
+    """Initial 2FA setup page for new users."""
+    # Check if user has a pending 2FA setup
+    username = session.get('pending_2fa_setup_username')
+    if not username:
+        return redirect(url_for('admin.login'))
+    
+    admin_config = load_admin_config()
+    users = admin_config.get('users', [])
+    user = next((u for u in users if u['username'] == username), None)
+    
+    if not user or not user.get('2fa_enabled', False) or user.get('2fa_setup_complete', False):
+        session.pop('pending_2fa_setup_username', None)
+        return redirect(url_for('admin.login'))
+    
+    if request.method == 'POST':
+        totp_code = request.form.get('totp_code', '')
+        
+        if TOTP_AVAILABLE and user.get('2fa_secret'):
+            totp = pyotp.TOTP(user['2fa_secret'])
+            if totp.verify(totp_code, valid_window=1):
+                # 2FA setup complete
+                user['2fa_setup_complete'] = True
+                save_admin_config(admin_config)
+                
+                # Log the user in
+                session.pop('pending_2fa_setup_username', None)
+                session['admin_logged_in'] = True
+                session['admin_username'] = username
+                session.permanent = True
+                flash('2FA setup completed successfully!', 'success')
+                return redirect(url_for('admin.dashboard'))
+        
+        error = "Invalid 2FA code. Please try again."
+        secret = user.get('2fa_secret', '')
+        qr_code = generate_qr_code(pyotp.TOTP(secret).provisioning_uri(name=username, issuer_name="WOL Gateway")) if secret else ''
+        return render_template_string(INITIAL_2FA_SETUP_TEMPLATE, error=error, username=username, secret=secret, qr_code=qr_code)
+    
+    # Generate 2FA secret if not already set
+    if not user.get('2fa_secret'):
+        user['2fa_secret'] = pyotp.random_base32() if TOTP_AVAILABLE else ''
+        save_admin_config(admin_config)
+    
+    # Show 2FA setup form with QR code
+    secret = user.get('2fa_secret', '')
+    qr_code = ''
+    if TOTP_AVAILABLE and secret:
+        totp = pyotp.TOTP(secret)
+        provisioning_uri = totp.provisioning_uri(name=username, issuer_name="WOL Gateway")
+        qr_code = generate_qr_code(provisioning_uri)
+    
+    return render_template_string(INITIAL_2FA_SETUP_TEMPLATE, error=None, username=username, secret=secret, qr_code=qr_code)
 
 
 @admin_bp.route('/logout')
@@ -370,7 +466,8 @@ def add_user():
             'username': username,
             'password_hash': hash_password(password),
             '2fa_enabled': enable_2fa,
-            '2fa_secret': pyotp.random_base32() if enable_2fa else ''
+            '2fa_secret': '',
+            '2fa_setup_complete': False
         }
         
         admin_config['users'].append(new_user)
@@ -459,6 +556,15 @@ def security_settings():
     """Security settings page."""
     admin_config = load_admin_config()
     
+    # Get current user from session
+    current_username = session.get('admin_username')
+    users = admin_config.get('users', [])
+    current_user = next((u for u in users if u['username'] == current_username), None)
+    
+    if not current_user:
+        flash('User not found', 'error')
+        return redirect(url_for('admin.dashboard'))
+    
     if request.method == 'POST':
         action = request.form.get('action')
         
@@ -468,14 +574,14 @@ def security_settings():
             confirm_password = request.form.get('confirm_password', '')
             
             # Verify current password
-            if not verify_password(current_password, admin_config['admin_password_hash']):
+            if not verify_password(current_password, current_user['password_hash']):
                 flash('Current password is incorrect', 'error')
             elif new_password != confirm_password:
                 flash('New passwords do not match', 'error')
             elif len(new_password) < 6:
                 flash('Password must be at least 6 characters', 'error')
             else:
-                admin_config['admin_password_hash'] = hash_password(new_password)
+                current_user['password_hash'] = hash_password(new_password)
                 save_admin_config(admin_config)
                 flash('Password changed successfully', 'success')
         
@@ -487,14 +593,14 @@ def security_settings():
             
             # Generate new 2FA secret
             secret = pyotp.random_base32()
-            admin_config['2fa_secret'] = secret
-            admin_config['2fa_enabled'] = False  # Not enabled until verified
+            current_user['2fa_secret'] = secret
+            current_user['2fa_enabled'] = False  # Not enabled until verified
             save_admin_config(admin_config)
             
             # Generate QR code
             totp = pyotp.TOTP(secret)
             provisioning_uri = totp.provisioning_uri(
-                name=admin_config['admin_username'],
+                name=current_username,
                 issuer_name="WOL Gateway"
             )
             
@@ -505,10 +611,10 @@ def security_settings():
         
         elif action == 'verify_2fa':
             totp_code = request.form.get('totp_code', '')
-            totp = pyotp.TOTP(admin_config['2fa_secret'])
+            totp = pyotp.TOTP(current_user['2fa_secret'])
             
             if totp.verify(totp_code, valid_window=1):
-                admin_config['2fa_enabled'] = True
+                current_user['2fa_enabled'] = True
                 save_admin_config(admin_config)
                 flash('2FA enabled successfully', 'success')
                 return redirect(url_for('admin.security_settings'))
@@ -518,9 +624,9 @@ def security_settings():
         
         elif action == 'disable_2fa':
             password = request.form.get('password', '')
-            if verify_password(password, admin_config['admin_password_hash']):
-                admin_config['2fa_enabled'] = False
-                admin_config['2fa_secret'] = ''
+            if verify_password(password, current_user['password_hash']):
+                current_user['2fa_enabled'] = False
+                current_user['2fa_secret'] = ''
                 save_admin_config(admin_config)
                 flash('2FA disabled successfully', 'success')
             else:
@@ -529,7 +635,7 @@ def security_settings():
         return redirect(url_for('admin.security_settings'))
     
     return render_template_string(SECURITY_TEMPLATE, 
-                                 two_fa_enabled=admin_config.get('2fa_enabled', False))
+                                 two_fa_enabled=current_user.get('2fa_enabled', False))
 
 
 # HTML Templates
@@ -701,6 +807,440 @@ LOGIN_TEMPLATE = '''
         const savedTheme = localStorage.getItem('theme') || 'light';
         document.documentElement.setAttribute('data-theme', savedTheme);
         updateThemeIcon();
+    </script>
+</body>
+</html>
+'''
+
+VERIFY_2FA_TEMPLATE = '''
+<!DOCTYPE html>
+<html>
+<head>
+    <title>2FA Verification - WOL Gateway</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #333333;
+            --card-bg: #ffffff;
+            --border-color: #e0e0e0;
+            --input-bg: #ffffff;
+            --shadow: rgba(0,0,0,0.2);
+        }
+        [data-theme="dark"] {
+            --bg-color: #1a1a1a;
+            --text-color: #e0e0e0;
+            --card-bg: #2d2d2d;
+            --border-color: #404040;
+            --input-bg: #3d3d3d;
+            --shadow: rgba(0,0,0,0.5);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: var(--bg-color);
+            color: var(--text-color);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        .verify-container {
+            background: var(--card-bg);
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px var(--shadow);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+        .theme-toggle {
+            position: fixed;
+            top: 15px;
+            left: 15px;
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+            z-index: 1000;
+            color: var(--text-color);
+        }
+        .theme-toggle:hover {
+            opacity: 1;
+        }
+        .shield-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        h1 {
+            color: var(--text-color);
+            margin-bottom: 10px;
+            font-size: 24px;
+        }
+        .username-display {
+            color: #667eea;
+            font-weight: 600;
+            margin-bottom: 20px;
+            font-size: 18px;
+        }
+        .instructions {
+            color: var(--text-color);
+            margin-bottom: 30px;
+            opacity: 0.8;
+            font-size: 14px;
+        }
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border-left: 4px solid #c33;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid var(--border-color);
+            border-radius: 5px;
+            font-size: 24px;
+            text-align: center;
+            letter-spacing: 8px;
+            font-weight: 600;
+            background: var(--input-bg);
+            color: var(--text-color);
+            transition: border-color 0.3s;
+        }
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        .cancel-link {
+            display: block;
+            margin-top: 15px;
+            color: var(--text-color);
+            opacity: 0.6;
+            text-decoration: none;
+            font-size: 14px;
+        }
+        .cancel-link:hover {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle dark mode"><i class="fas fa-moon"></i></button>
+    <div class="verify-container">
+        <div class="shield-icon"><i class="fas fa-shield-alt"></i></div>
+        <h1>Two-Factor Authentication</h1>
+        <div class="username-display">{{ username }}</div>
+        <p class="instructions">Enter the 6-digit code from your authenticator app</p>
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
+        <form method="POST">
+            <div class="form-group">
+                <input type="text" id="totp_code" name="totp_code" required autofocus
+                       placeholder="000000" pattern="[0-9]{6}" maxlength="6">
+            </div>
+            <button type="submit">Verify</button>
+        </form>
+        <a href="{{ url_for('admin.login') }}" class="cancel-link">Cancel</a>
+    </div>
+    <script>
+        function toggleTheme() {
+            const html = document.documentElement;
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon();
+        }
+        function updateThemeIcon() {
+            const theme = document.documentElement.getAttribute('data-theme');
+            const toggle = document.querySelector('.theme-toggle i');
+            toggle.className = theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+        }
+        // Load theme on page load
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+        updateThemeIcon();
+        
+        // Auto-submit when 6 digits entered
+        document.getElementById('totp_code').addEventListener('input', function(e) {
+            if (e.target.value.length === 6) {
+                e.target.form.submit();
+            }
+        });
+    </script>
+</body>
+</html>
+'''
+
+INITIAL_2FA_SETUP_TEMPLATE = '''
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Setup Two-Factor Authentication - WOL Gateway</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #333333;
+            --card-bg: #ffffff;
+            --border-color: #e0e0e0;
+            --input-bg: #ffffff;
+            --shadow: rgba(0,0,0,0.2);
+        }
+        [data-theme="dark"] {
+            --bg-color: #1a1a1a;
+            --text-color: #e0e0e0;
+            --card-bg: #2d2d2d;
+            --border-color: #404040;
+            --input-bg: #3d3d3d;
+            --shadow: rgba(0,0,0,0.5);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: var(--bg-color);
+            color: var(--text-color);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        .setup-container {
+            background: var(--card-bg);
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px var(--shadow);
+            width: 100%;
+            max-width: 500px;
+            text-align: center;
+        }
+        .theme-toggle {
+            position: fixed;
+            top: 15px;
+            left: 15px;
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+            z-index: 1000;
+            color: var(--text-color);
+        }
+        .theme-toggle:hover {
+            opacity: 1;
+        }
+        .shield-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        h1 {
+            color: var(--text-color);
+            margin-bottom: 10px;
+            font-size: 24px;
+        }
+        .username-display {
+            color: #667eea;
+            font-weight: 600;
+            margin-bottom: 20px;
+            font-size: 18px;
+        }
+        .instructions {
+            color: var(--text-color);
+            margin-bottom: 25px;
+            opacity: 0.8;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .step-number {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            line-height: 24px;
+            font-weight: 600;
+            font-size: 12px;
+            margin-right: 8px;
+        }
+        .qr-container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            display: inline-block;
+        }
+        .qr-container img {
+            display: block;
+            max-width: 250px;
+            height: auto;
+        }
+        .secret-key {
+            background: var(--input-bg);
+            padding: 15px;
+            border-radius: 5px;
+            border: 2px solid var(--border-color);
+            margin: 20px 0;
+            font-family: monospace;
+            font-size: 14px;
+            word-break: break-all;
+            color: var(--text-color);
+        }
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border-left: 4px solid #c33;
+        }
+        .form-group {
+            margin: 20px 0;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid var(--border-color);
+            border-radius: 5px;
+            font-size: 20px;
+            text-align: center;
+            letter-spacing: 6px;
+            font-weight: 600;
+            background: var(--input-bg);
+            color: var(--text-color);
+            transition: border-color 0.3s;
+        }
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+            margin-top: 10px;
+        }
+        button:hover {
+            transform: translateY(-2px);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        .help-text {
+            font-size: 12px;
+            opacity: 0.6;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle dark mode"><i class="fas fa-moon"></i></button>
+    <div class="setup-container">
+        <div class="shield-icon"><i class="fas fa-shield-alt"></i></div>
+        <h1>Complete Your 2FA Setup</h1>
+        <div class="username-display">{{ username }}</div>
+        <p class="instructions">
+            <span class="step-number">1</span> Scan this QR code with your authenticator app<br>
+            (Google Authenticator, Authy, Microsoft Authenticator, etc.)
+        </p>
+        {% if qr_code %}
+        <div class="qr-container">
+            <img src="data:image/png;base64,{{ qr_code }}" alt="2FA QR Code">
+        </div>
+        {% endif %}
+        <p class="instructions">
+            <span class="step-number">2</span> Or manually enter this secret key:
+        </p>
+        <div class="secret-key">{{ secret }}</div>
+        <p class="instructions">
+            <span class="step-number">3</span> Enter the 6-digit code from your app to verify:
+        </p>
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
+        <form method="POST">
+            <div class="form-group">
+                <input type="text" id="totp_code" name="totp_code" required autofocus
+                       placeholder="000000" pattern="[0-9]{6}" maxlength="6">
+            </div>
+            <button type="submit">Verify & Complete Setup</button>
+        </form>
+        <p class="help-text">Keep your authenticator app - you'll need it for future logins</p>
+    </div>
+    <script>
+        function toggleTheme() {
+            const html = document.documentElement;
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon();
+        }
+        function updateThemeIcon() {
+            const theme = document.documentElement.getAttribute('data-theme');
+            const toggle = document.querySelector('.theme-toggle i');
+            toggle.className = theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+        }
+        // Load theme on page load
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+        updateThemeIcon();
+        
+        // Auto-submit when 6 digits entered
+        document.getElementById('totp_code').addEventListener('input', function(e) {
+            if (e.target.value.length === 6) {
+                e.target.form.submit();
+            }
+        });
     </script>
 </body>
 </html>
