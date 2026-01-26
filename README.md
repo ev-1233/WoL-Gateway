@@ -6,9 +6,9 @@ Wake-on-LAN gateway service that provides a simple web interface to wake up your
 
 I am aware that this is a rather niche project that not many will be able to test so i have a video bellow to demo every thing.
 
-https://github.com/user-attachments/assets/fd3de85b-2e90-4443-a15b-c90b5a8cc9a8
+https://github.com/user-attachments/assets/e9a6aef3-b0ac-4325-b3e2-9b399664c446
 
-*Alternatively, [watch on YouTube](https://youtu.be/Hu5iIX8yUsQ)*
+*Alternatively, [watch on YouTube](https://youtu.be/liol-xguke8)*
 
 ## Installation
 
