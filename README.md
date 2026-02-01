@@ -10,6 +10,14 @@ https://github.com/user-attachments/assets/e9a6aef3-b0ac-4325-b3e2-9b399664c446
 
 *Alternatively, [watch on YouTube](https://youtu.be/liol-xguke8)*
 
+There is also a demo available at https://demo-wol.thisandthat.qzz.io 
+
+to view the admin panel:
+- **Username:** admin
+- **Password:** password
+
+Please note this demo **will not turn on a computer** as this requires running locally.
+
 ## Installation
 
 ### Option 1: Docker Hub (Strongly Recommended)
