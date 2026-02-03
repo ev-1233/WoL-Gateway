@@ -15,13 +15,13 @@ Both are automatically built and released via GitHub Actions when you push a ver
 
 Edit `version.py`:
 ```python
-__version__ = "1.0.1"  # Increment version
+__version__ = "1.0.2"  # Increment version
 ```
 
 Commit the change:
 ```bash
 git add version.py
-git commit -m "Bump version to 1.0.1"
+git commit -m "Bump version to 1.0.2"
 git push
 ```
 
@@ -29,10 +29,10 @@ git push
 
 ```bash
 # Create annotated tag
-git tag -a v1.0.1 -m "Release v1.0.1"
+git tag -a v1.0.2 -m "Release v1.0.2"
 
 # Push tag to trigger build
-git push origin v1.0.1
+git push origin v1.0.2
 ```
 
 ### 3. Automated Build Process

@@ -127,18 +127,30 @@ jobs:
             artifacts/wol-gateway-linux/wol-gateway-linux
             artifacts/wol-gateway-windows.exe/wol-gateway-windows.exe
             artifacts/wol-gateway-macos/wol-gateway-macos
+            demo/demo_vid.webm
           body: |
             ## WOL Gateway ${{ github.ref_name }}
             
+            ### 🎥 Demo
+
+            https://github.com/user-attachments/assets/e9a6aef3-b0ac-4325-b3e2-9b399664c446
+            *Alternatively, [watch on YouTube](https://youtu.be/liol-xguke8)*
+            
+            **[Try the live demo](https://demo-wol.thisandthat.qzz.io)** or watch the demo video attached to this release.
+            
             ### Installation
             
-            **Docker:**
+            #### Option 1: Docker (Recommended)
+            
+            **Prerequisites:** Docker must be installed. [Install Docker](https://docs.docker.com/get-docker/) if you haven't already.
+            
             ```bash
-            docker pull ${{ env.DOCKER_IMAGE }}:${{ github.ref_name }}
+            docker run -it --name wol-gateway --cap-add NET_ADMIN --cap-add NET_RAW --network host --restart unless-stopped ev1233/wol-gateway:latest
             ```
             
-            **Standalone Executables:**
-            Download the appropriate file for your system below.
+            #### Option 2: Standalone Executables
+            
+            Download the appropriate executable for your system from the assets below. No prerequisites required.
             
             ### What's Changed
             - See commit history for details
