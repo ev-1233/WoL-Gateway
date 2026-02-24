@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Evan McKeown
+# SPDX-License-Identifier: Apache-2.0
+
 """
 WOL Bridge Setup Script
 
