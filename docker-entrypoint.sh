@@ -1,6 +1,7 @@
 #!/bin/bash
 set -e
 
+#hi ther hello
 CONFIG_FILE="/app/WOL_Brige.config"
 ADMIN_CONFIG_FILE="/app/admin_config.json"
 
