@@ -221,7 +221,6 @@ def test_platform_detection():
         
         # Temporarily replace function (careful with scope)
         globals()['check_command_exists'] = mock_check
-            test_mode = getattr(args, 'test', False)
         
         # Test detection logic normally
         detected_os, detected_pkg = detect_os()
@@ -311,7 +310,7 @@ def check_command_exists(command):
         # Use shutil.which for cross-platform compatibility
         import shutil
         return shutil.which(command) is not None
-    except:
+    except Exception as e:
         # Fallback to platform-specific commands
         if platform.system() == 'Windows':
             result = subprocess.run(['where', command], capture_output=True, text=True)
