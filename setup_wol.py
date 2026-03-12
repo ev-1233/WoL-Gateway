@@ -19,6 +19,7 @@ Additionally, this script automatically detects your Linux distribution and
 installs required dependencies (Flask and wakeonlan) if they're missing.
 """
 
+import argparse
 import json
 import os
 import re
@@ -99,17 +100,41 @@ def check_for_updates():
     
     return False
 
-def detect_linux_distro():
+def detect_os():
     """
-    Detects the Linux distribution and returns the package manager to use.
+    Detects the operating system and returns the package manager to use.
     
     Returns:
-        tuple: (distro_name, package_manager) or (None, None) if unknown
-               package_manager can be: 'apt', 'dnf', 'yum', 'pacman', 'zypper', 'apk'
+        tuple: (os_name, package_manager) or (None, None) if unknown
+               package_manager can be: 'apt', 'dnf', 'yum', 'pacman', 'zypper', 'apk', 'brew', 'port', 'choco', 'scoop', 'winget'
     """
-    # Check if we're on Linux
-    if platform.system() != 'Linux':
-        return (platform.system(), None)
+    system = platform.system()
+    
+    # Handle Windows
+    if system == 'Windows':
+        # Check for Windows package managers (in order of preference)
+        if check_command_exists('choco'):
+            return ('Windows', 'choco')
+        elif check_command_exists('scoop'):
+            return ('Windows', 'scoop')
+        elif check_command_exists('winget'):
+            return ('Windows', 'winget')
+        else:
+            return ('Windows', None)
+    
+    # Handle macOS
+    elif system == 'Darwin':
+        # Check for macOS package managers
+        if check_command_exists('brew'):
+            return ('macOS', 'brew')
+        elif check_command_exists('port'):
+            return ('macOS', 'port')
+        else:
+            return ('macOS', None)
+    
+    # Handle Linux
+    elif system != 'Linux':
+        return (system, None)
     
     # Try to read /etc/os-release (most modern Linux distros)
     try:
@@ -118,7 +143,7 @@ def detect_linux_distro():
             
         # Detect distribution
         if 'ubuntu' in os_release or 'debian' in os_release or 'mint' in os_release:
-            return ('Debian/Ubuntu', 'aabout:blank#blockedpt')
+            return ('Debian/Ubuntu', 'apt')
         elif 'fedora' in os_release:
             return ('Fedora', 'dnf')
         elif 'rhel' in os_release or 'red hat' in os_release or 'centos' in os_release:
@@ -155,9 +180,126 @@ def detect_linux_distro():
     
     return ('Unknown', None)
 
+def test_platform_detection():
+    """
+    Test the platform detection logic by simulating different operating systems.
+    This helps verify that the detection would work correctly on Windows, macOS, and Linux.
+    """
+    print("\n" + "="*70)
+    print("                    PLATFORM DETECTION TEST")
+    print("="*70)
+    
+    # Store original values
+    original_system = platform.system
+    original_check_command = check_command_exists
+    
+    # Test scenarios: (os_name, available_commands, expected_os, expected_pkg_manager)
+    test_scenarios = [
+        # Windows scenarios
+        ('Windows', ['choco'], 'Windows', 'choco'),
+        ('Windows', ['scoop'], 'Windows', 'scoop'),
+        ('Windows', ['winget'], 'Windows', 'winget'),
+        ('Windows', [], 'Windows', None),
+        
+        # macOS scenarios
+        ('Darwin', ['brew'], 'macOS', 'brew'),
+        ('Darwin', ['port'], 'macOS', 'port'),
+        ('Darwin', [], 'macOS', None),
+        
+        # Linux scenarios (simulated via existing logic)
+    ]
+    
+    print("\nTesting OS Detection Logic:\n")
+    
+    for test_os, available_cmds, expected_os, expected_pkg in test_scenarios:
+        # Mock platform.system
+        platform.system = lambda os=test_os: os
+        
+        # Mock check_command_exists
+        def mock_check(cmd, cmds=available_cmds):
+            return cmd in cmds
+        
+        # Temporarily replace function (careful with scope)
+        globals()['check_command_exists'] = mock_check
+            test_mode = getattr(args, 'test', False)
+        
+        # Test detection logic normally
+        detected_os, detected_pkg = detect_os()
+        
+        # Check result
+        success = (detected_os == expected_os and detected_pkg == expected_pkg)
+        status = "✓" if success else "✗"
+        
+        print(f"  {status} OS: {test_os:10s} | Commands: {str(available_cmds):20s} | "
+              f"Detected: {detected_os}, {detected_pkg or 'None'}")
+        
+        if not success:
+            print(f"     Expected: {expected_os}, {expected_pkg or 'None'}")
+    
+    # Test Linux detection (using actual function since it reads files)
+    print("\n  Linux Detection (current system):")
+    platform.system = lambda: 'Linux'
+    globals()['check_command_exists'] = original_check_command
+    detected_os, detected_pkg = detect_os()
+    print(f"    Detected: {detected_os}, {detected_pkg or 'None'}")
+    
+    # Restore original functions
+    platform.system = original_system
+    globals()['check_command_exists'] = original_check_command
+    
+    print("\n" + "="*70)
+    print("\nTesting Full Installation Logic for All Platforms:\n")
+    
+    # Override is_running_in_docker to False just for this test
+    original_docker = globals().get('is_running_in_docker')
+    if original_docker:
+        globals()['is_running_in_docker'] = lambda: False
+        
+    for test_os, available_cmds, expected_os, expected_pkg in test_scenarios:
+        if expected_pkg is None:
+            continue
+            
+        print(f"\n--- Simulating Installation on {expected_os} ({expected_pkg}) ---")
+        
+        # Mock platform and commands again for install_dependencies
+        platform.system = lambda os=test_os: os
+        
+        def mock_check(cmd, cmds=available_cmds):
+            if cmd == 'wakeonlan':
+                return False  # Force it to attempt installation
+            return cmd in cmds
+            
+        def mock_detect():
+            return expected_os, expected_pkg
+            
+        globals()['check_command_exists'] = mock_check
+        globals()['detect_os'] = mock_detect
+        
+        # We also need to mock python package checks to force install paths
+        original_check_pkg = check_python_package
+        globals()['check_python_package'] = lambda x: False
+        
+        # Run dependency installation in dry run mode quietly (temporarily suppressing print 1-4)
+        print("  Running install_dependencies(dry_run=True)...")
+        install_dependencies(dry_run=True, test_mode=True)
+        
+        # Restore package checker
+        globals()['check_python_package'] = original_check_pkg
+        
+    # Restore original functions again
+    platform.system = original_system
+    globals()['check_command_exists'] = original_check_command
+    globals()['detect_os'] = detect_os
+    if original_docker:
+        globals()['is_running_in_docker'] = original_docker
+        
+    print("\n" + "="*70)
+    print("  Test Complete!")
+    print("="*70 + "\n")
+
 def check_command_exists(command):
     """
-    Check if a command exists on the system .
+    Check if a command exists on the system.
     
     Args:
         command (str): Command name to check
@@ -165,8 +307,17 @@ def check_command_exists(command):
     Returns:
         bool: True if command exists, False otherwise
     """
-    result = subprocess.run(['which', command], capture_output=True, text=True)
-    return result.returncode == 0
+    try:
+        # Use shutil.which for cross-platform compatibility
+        import shutil
+        return shutil.which(command) is not None
+    except:
+        # Fallback to platform-specific commands
+        if platform.system() == 'Windows':
+            result = subprocess.run(['where', command], capture_output=True, text=True)
+        else:
+            result = subprocess.run(['which', command], capture_output=True, text=True)
+        return result.returncode == 0
 
 def check_python_package(package_name):
     """
@@ -184,7 +335,7 @@ def check_python_package(package_name):
     except ImportError:
         return False
 
-def install_dependencies():
+def install_dependencies(dry_run=False, test_mode=False):
     """
     Automatically detects the system and installs required dependencies.
     
@@ -194,6 +345,10 @@ def install_dependencies():
       - qrcode (Python package for QR codes - optional)
       - Pillow (Python package for QR code images - optional)
       - wakeonlan (system command-line utility)
+    
+    Args:
+        dry_run (bool): If True, only show what would be done without executing commands
+        test_mode (bool): If True, minimizes output for automated tests
     
     Returns:
         bool: True if all dependencies are satisfied, False if installation failed
@@ -207,12 +362,17 @@ def install_dependencies():
         print("="*50 + "\n")
         return True
     
+    mode_text = "DRY RUN - Checking Dependencies" if dry_run else "Checking Dependencies"
     print("\n" + "="*50)
-    print("      Checking Dependencies")
+    print(f"      {mode_text}")
     print("="*50)
     
-    # Detect Linux distribution
-    distro, pkg_manager = detect_linux_distro()
+    if dry_run:
+        print("\n⚠ DRY RUN MODE: No commands will be executed")
+        print("  This will show what would happen on this system.\n")
+    
+    # Detect operating system
+    distro, pkg_manager = detect_os()
     print(f"Detected OS: {distro}")
     
     if pkg_manager:
@@ -220,8 +380,18 @@ def install_dependencies():
     else:
         print("Warning: Could not detect package manager")
     
-    # Track if we need sudo
-    needs_sudo = os.geteuid() != 0  # True if not running as root
+    # Track if we need sudo (Unix systems only)
+    needs_sudo = False
+    if hasattr(os, 'geteuid'):
+        needs_sudo = os.geteuid() != 0  # True if not running as root
+    elif platform.system() == 'Windows':
+        # On Windows, check if running as administrator
+        try:
+            import ctypes
+            # Type checking issue: windll only exists on Windows
+            needs_sudo = not ctypes.windll.shell32.IsUserAnAdmin()  # type: ignore
+        except:
+            needs_sudo = True  # Assume not admin if we can't check
     
     # Check Flask
     print("\n[1/5] Checking Flask...")
@@ -231,23 +401,26 @@ def install_dependencies():
         print("  ✗ Flask is not installed")
         print("  Installing Flask via pip3...")
         
-        try:
-            # Try user installation first (no sudo needed)
-            result = subprocess.run(
-                [sys.executable, '-m', 'pip', 'install', '--user', 'flask'],
-                capture_output=True,
-                text=True
-            )
-            
-            if result.returncode == 0:
-                print("  ✓ Flask installed successfully")
-            else:
-                print(f"  ✗ Failed to install Flask: {result.stderr}")
-                return False
+        if dry_run:
+            print(f"  [DRY RUN] Would execute: {sys.executable} -m pip install --user flask")
+        else:
+            try:
+                # Try user installation first (no sudo needed)
+                result = subprocess.run(
+                    [sys.executable, '-m', 'pip', 'install', '--user', 'flask'],
+                    capture_output=True,
+                    text=True
+                )
                 
-        except Exception as e:
-            print(f"  ✗ Error installing Flask: {e}")
-            return False
+                if result.returncode == 0:
+                    print("  ✓ Flask installed successfully")
+                else:
+                    print(f"  ✗ Failed to install Flask: {result.stderr}")
+                    return False
+                    
+            except Exception as e:
+                print(f"  ✗ Error installing Flask: {e}")
+                return False
     
     # Check pyotp (for admin panel 2FA)
     print("\n[2/5] Checking pyotp...")
@@ -257,22 +430,25 @@ def install_dependencies():
         print("  ✗ pyotp is not installed")
         print("  Installing pyotp via pip3...")
         
-        try:
-            result = subprocess.run(
-                [sys.executable, '-m', 'pip', 'install', '--user', 'pyotp'],
-                capture_output=True,
-                text=True
-            )
-            
-            if result.returncode == 0:
-                print("  ✓ pyotp installed successfully")
-            else:
-                print(f"  ✗ Failed to install pyotp: {result.stderr}")
-                return False
+        if dry_run:
+            print(f"  [DRY RUN] Would execute: {sys.executable} -m pip install --user pyotp")
+        else:
+            try:
+                result = subprocess.run(
+                    [sys.executable, '-m', 'pip', 'install', '--user', 'pyotp'],
+                    capture_output=True,
+                    text=True
+                )
                 
-        except Exception as e:
-            print(f"  ✗ Error installing pyotp: {e}")
-            return False
+                if result.returncode == 0:
+                    print("  ✓ pyotp installed successfully")
+                else:
+                    print(f"  ✗ Failed to install pyotp: {result.stderr}")
+                    return False
+                    
+            except Exception as e:
+                print(f"  ✗ Error installing pyotp: {e}")
+                return False
     
     # Check qrcode (for admin panel 2FA)
     print("\n[3/5] Checking qrcode...")
@@ -282,22 +458,25 @@ def install_dependencies():
         print("  ✗ qrcode is not installed")
         print("  Installing qrcode via pip3...")
         
-        try:
-            result = subprocess.run(
-                [sys.executable, '-m', 'pip', 'install', '--user', 'qrcode[pil]'],
-                capture_output=True,
-                text=True
-            )
-            
-            if result.returncode == 0:
-                print("  ✓ qrcode installed successfully")
-            else:
-                print(f"  ✗ Failed to install qrcode: {result.stderr}")
-                return False
+        if dry_run:
+            print(f"  [DRY RUN] Would execute: {sys.executable} -m pip install --user qrcode[pil]")
+        else:
+            try:
+                result = subprocess.run(
+                    [sys.executable, '-m', 'pip', 'install', '--user', 'qrcode[pil]'],
+                    capture_output=True,
+                    text=True
+                )
                 
-        except Exception as e:
-            print(f"  ✗ Error installing qrcode: {e}")
-            return False
+                if result.returncode == 0:
+                    print("  ✓ qrcode installed successfully")
+                else:
+                    print(f"  ✗ Failed to install qrcode: {result.stderr}")
+                    return False
+                    
+            except Exception as e:
+                print(f"  ✗ Error installing qrcode: {e}")
+                return False
     
     # Check Pillow (for QR code image generation)
     print("\n[4/5] Checking Pillow...")
@@ -307,22 +486,25 @@ def install_dependencies():
         print("  ✗ Pillow is not installed")
         print("  Installing Pillow via pip3...")
         
-        try:
-            result = subprocess.run(
-                [sys.executable, '-m', 'pip', 'install', '--user', 'Pillow'],
-                capture_output=True,
-                text=True
-            )
-            
-            if result.returncode == 0:
-                print("  ✓ Pillow installed successfully")
-            else:
-                print(f"  ✗ Failed to install Pillow: {result.stderr}")
-                return False
+        if dry_run:
+            print(f"  [DRY RUN] Would execute: {sys.executable} -m pip install --user Pillow")
+        else:
+            try:
+                result = subprocess.run(
+                    [sys.executable, '-m', 'pip', 'install', '--user', 'Pillow'],
+                    capture_output=True,
+                    text=True
+                )
                 
-        except Exception as e:
-            print(f"  ✗ Error installing Pillow: {e}")
-            return False
+                if result.returncode == 0:
+                    print("  ✓ Pillow installed successfully")
+                else:
+                    print(f"  ✗ Failed to install Pillow: {result.stderr}")
+                    return False
+                    
+            except Exception as e:
+                print(f"  ✗ Error installing Pillow: {e}")
+                return False
     
     # Check wakeonlan
     print("\n[5/5] Checking wakeonlan...")
@@ -351,7 +533,12 @@ def install_dependencies():
             'pacman': [('wakeonlan', ['pacman', '-S', '--noconfirm', 'wakeonlan'])],
             'zypper': [('wakeonlan', ['zypper', '--non-interactive', 'install', 'wakeonlan'])],
             'apk': [('wakeonlan', ['apk', 'add', 'wakeonlan'])],
-            'pkg': [('wakeonlan', ['pkg', 'install', '-y', 'wakeonlan'])]
+            'pkg': [('wakeonlan', ['pkg', 'install', '-y', 'wakeonlan'])],
+            'brew': [('wakeonlan', ['brew', 'install', 'wakeonlan'])],
+            'port': [('wakeonlan', ['port', 'install', 'wakeonlan'])],
+            'choco': [('wakeonlan', ['choco', 'install', '-y', 'wakeonlan'])],
+            'scoop': [('wakeonlan', ['scoop', 'install', 'wakeonlan'])],
+            'winget': [('wakeonlan', ['winget', 'install', '--id', 'wakeonlan', '-e', '--silent'])]
         }
         
         if pkg_manager not in install_commands:
@@ -362,51 +549,62 @@ def install_dependencies():
         # Try each package option for this package manager
         installed = False
         for pkg_name, cmd in install_commands[pkg_manager]:
-            # Add sudo if needed (except for Termux pkg)
-            if needs_sudo and pkg_manager != 'pkg':
+            # Add sudo if needed (Unix systems only, except for user package managers)
+            user_package_managers = ['pkg', 'scoop', 'choco', 'winget', 'brew', 'port']
+            if needs_sudo and pkg_manager not in user_package_managers and platform.system() != 'Windows':
                 full_cmd = ['sudo'] + cmd
             else:
                 full_cmd = cmd
             
             print(f"  Trying to install '{pkg_name}': {' '.join(full_cmd)}")
             
-            try:
-                result = subprocess.run(full_cmd, capture_output=True, text=True)
-                
-                if result.returncode == 0 and check_command_exists('wakeonlan'):
-                    print(f"  ✓ wakeonlan installed successfully (as '{pkg_name}' package)")
-                    installed = True
-                    break
-                else:
-                    print(f"  ✗ Package '{pkg_name}' not available or installation failed")
+            if dry_run:
+                print(f"  [DRY RUN] Would execute: {' '.join(full_cmd)}")
+                installed = True  # Assume success in dry-run
+                break
+            else:
+                try:
+                    result = subprocess.run(full_cmd, capture_output=True, text=True)
                     
-            except Exception as e:
-                print(f"  ✗ Error trying to install '{pkg_name}': {e}")
+                    if result.returncode == 0 and check_command_exists('wakeonlan'):
+                        print(f"  ✓ wakeonlan installed successfully (as '{pkg_name}' package)")
+                        installed = True
+                        break
+                    else:
+                        print(f"  ✗ Package '{pkg_name}' not available or installation failed")
+                        
+                except Exception as e:
+                    print(f"  ✗ Error trying to install '{pkg_name}': {e}")
         
         # If none of the system packages worked, try pip as fallback
         if not installed:
             print("\n  System packages failed. Trying Python package 'wakeonlan'...")
-            try:
-                result = subprocess.run(
-                    [sys.executable, '-m', 'pip', 'install', '--user', 'wakeonlan'],
-                    capture_output=True,
-                    text=True
-                )
-                
-                if result.returncode == 0:
-                    # Check if the wakeonlan command is now available
-                    # pip installs it to ~/.local/bin usually
-                    if check_command_exists('wakeonlan'):
-                        print("  ✓ wakeonlan installed successfully via pip")
-                        installed = True
-                    else:
-                        print("  ✓ wakeonlan Python package installed")
-                        print("  ⚠ Note: You may need to add ~/.local/bin to your PATH")
-                        print("    Or use: python3 -m wakeonlan <MAC_ADDRESS>")
-                        installed = True
-                        
-            except Exception as e:
-                print(f"  ✗ Error installing wakeonlan via pip: {e}")
+            
+            if dry_run:
+                print(f"  [DRY RUN] Would execute: {sys.executable} -m pip install --user wakeonlan")
+                installed = True  # Assume success in dry-run
+            else:
+                try:
+                    result = subprocess.run(
+                        [sys.executable, '-m', 'pip', 'install', '--user', 'wakeonlan'],
+                        capture_output=True,
+                        text=True
+                    )
+                    
+                    if result.returncode == 0:
+                        # Check if the wakeonlan command is now available
+                        # pip installs it to ~/.local/bin usually
+                        if check_command_exists('wakeonlan'):
+                            print("  ✓ wakeonlan installed successfully via pip")
+                            installed = True
+                        else:
+                            print("  ✓ wakeonlan Python package installed")
+                            print("  ⚠ Note: You may need to add ~/.local/bin to your PATH")
+                            print("    Or use: python3 -m wakeonlan <MAC_ADDRESS>")
+                            installed = True
+                            
+                except Exception as e:
+                    print(f"  ✗ Error installing wakeonlan via pip: {e}")
         
         if not installed:
             print("\n  ✗ Could not install wakeonlan automatically")
@@ -644,7 +842,7 @@ def install_docker():
     print("      Docker Installation")
     print("="*50)
     
-    distro, pkg_manager = detect_linux_distro()
+    distro, pkg_manager = detect_os()
     
     if platform.system() != 'Linux':
         print(f"\nAutomated Docker installation is only available for Linux.")
@@ -655,7 +853,9 @@ def install_docker():
     print("\nThis will install Docker on your system.")
     
     # Check if running as root
-    needs_sudo = os.geteuid() != 0
+    needs_sudo = False
+    if hasattr(os, 'geteuid'):
+        needs_sudo = os.geteuid() != 0
     
     try:
         # Use official Docker installation script (works for most distros)
@@ -769,7 +969,9 @@ def start_docker():
     print("      Starting Docker")
     print("="*50)
     
-    needs_sudo = os.geteuid() != 0
+    needs_sudo = False
+    if hasattr(os, 'geteuid'):
+        needs_sudo = os.geteuid() != 0
     install_type = detect_docker_installation_type()
     
     print(f"\nDetected Docker installation type: {install_type}")
@@ -1044,11 +1246,27 @@ def setup_with_docker():
         print(f"\n✗ Error running Docker: {e}")
         return False
 
-def main():
+def main(test_mode=False, dry_run=False):
+    """
+    Main setup function.
+    
+    Args:
+        test_mode (bool): If True, run platform detection tests and exit
+        dry_run (bool): If True, show what would be done without executing commands
+    """
+    # Handle test mode
+    if test_mode:
+        test_platform_detection()
+        return
+    
     print("====================================")
     print("      WOL Bridge Setup Script       ")
     print(f"      Version {__version__}              ")
     print("====================================")
+    
+    if dry_run:
+        print("\n⚠  DRY RUN MODE ENABLED")
+        print("   No actual changes will be made.\n")
     
     # Check for updates (only if not running in Docker)
     if not is_running_in_docker():
@@ -1242,7 +1460,7 @@ def main():
     if not use_admin_panel:
         # Traditional configuration mode
         configure_servers_traditional(current_config, default_port, 
-                                     docker_available, choice)
+                                     docker_available, choice, dry_run=dry_run)
         config_done = True
     else:
         # Admin panel mode - check if we have existing servers
@@ -1310,7 +1528,7 @@ def main():
 
 
 def configure_servers_traditional(current_config, default_port, 
-                                  docker_available, deployment_choice):
+                                  docker_available, deployment_choice, dry_run=False):
     """
     Traditional server configuration through setup script.
     
@@ -1319,6 +1537,7 @@ def configure_servers_traditional(current_config, default_port,
         default_port: Default port number
         docker_available: Whether Docker is available
         deployment_choice: '1' for Docker, '2' for direct installation
+        dry_run: Whether to run in dry_run mode
     """
     
     # Extract existing servers if any
@@ -1340,12 +1559,22 @@ def configure_servers_traditional(current_config, default_port,
         if keep_choice in ('', 'y', 'yes'):
             servers = existing_servers.copy()
             server_number = len(servers) + 1
-            print("Existing servers kept. You can add more servers below.\n")
+            print("Existing servers kept.")
+            
+            add_more = input("\nWould you like to add more servers? [y/N]: ").strip().lower()
+            if add_more not in ('y', 'yes'):
+                # Bypass the server collection loop and jump to getting global settings
+                break_server_loop = True
+            else:
+                break_server_loop = False
         else:
             print("Starting fresh configuration...\n")
+            break_server_loop = False
+    else:
+        break_server_loop = False
     
     # Loop to add servers
-    while True:
+    while not break_server_loop:
         print(f"\n{'='*50}")
         print(f"      Server #{server_number} Configuration")
         print(f"{'='*50}\n")
@@ -1561,7 +1790,7 @@ def configure_servers_traditional(current_config, default_port,
             return
         
         # Install dependencies
-        if not install_dependencies():
+        if not install_dependencies(dry_run=dry_run):
             print("\n[WARNING] Some dependencies could not be installed automatically.")
             print("The configuration has been saved, but you may need to install dependencies manually.")
             print("\nYou can:")
@@ -1577,8 +1806,32 @@ def configure_servers_traditional(current_config, default_port,
             print("  sudo python3 wol_gatway.py")
 
 if __name__ == "__main__":
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(
+        description='WOL Bridge Setup Script - Configure and install dependencies',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python3 setup_wol.py               # Normal setup
+  python3 setup_wol.py --test        # Test platform detection
+  python3 setup_wol.py --dry-run     # Show what would be done
+        """
+    )
+    parser.add_argument(
+        '--test',
+        action='store_true',
+        help='Test platform detection logic for Windows, macOS, and Linux'
+    )
+    parser.add_argument(
+        '--dry-run',
+        action='store_true',
+        help='Show what would be done without executing any commands'
+    )
+    
+    args = parser.parse_args()
+    
     try:
-        main()
+        main(test_mode=args.test, dry_run=args.dry_run)
     except KeyboardInterrupt:
         print("\n\n[Cancelled] Setup interrupted by user.")
         print("You can run this script again anytime: python3 setup_wol.py")
