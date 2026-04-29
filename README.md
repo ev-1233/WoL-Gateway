@@ -12,41 +12,42 @@ https://github.com/user-attachments/assets/e9a6aef3-b0ac-4325-b3e2-9b399664c446
 
 ## Installation
 
-### Option 1: Docker Hub (Strongly Recommended)
+### Option 1: Docker Hub (This project was built to be a docker img so **PLEASE USE DOCKER**)
 
-**Prerequisites:** Docker installed and running
+**Prerequisites:** Docker installed and running ([Docker install guide](https://docs.docker.com/engine/install/))
+
 
 ```bash
 docker run -it --name wol-gateway --cap-add NET_ADMIN --cap-add NET_RAW --network host --restart unless-stopped ev1233/wol-gateway:latest
 ```
 
 The setup script will:
+
 - Help you configure your servers (MAC addresses, URLs, etc.)
 - Build and start the Docker container automatically
 - Set up auto-restart on failure
 
 ### Option 2: Standalone Executable (No Prerequisites Required)
 
-
 1. Download the latest executable for your system:
+
    - [Linux](https://github.com/ev1233/wol-gateway/releases/latest/download/wol-gateway-linux)
    - [Windows](https://github.com/ev1233/wol-gateway/releases/latest/download/wol-gateway-windows.exe)
    - [macOS](https://github.com/ev1233/wol-gateway/releases/latest/download/wol-gateway-macos)
-
 2. Run the executable:
+
    ```bash
    # Linux
    chmod +x wol-gateway-linux
    ./wol-gateway-linux
-   
+
    # Windows
    wol-gateway-windows.exe
-   
+
    # macOS
    chmod +x wol-gateway-macos
    ./wol-gateway-macos
    ```
-
 3. Follow the on-screen prompts to configure your servers
 
 ## Install with git
@@ -57,7 +58,6 @@ If you just love git that much:
 
 - python3 [install guide](https://pythongeeks.org/python-3-installation-and-setup-guide/ "by pythongeeks.org")
 - Pip [install guide](https://pip.pypa.io/en/stable/installation/ "from pip themselves")
-
 
 ```bash
 # Linux
@@ -93,15 +93,18 @@ python setup_wol.py
 ## Updating
 
 ### Docker
+
 ```bash
 docker pull ev1233/wol-gateway:latest
 docker compose down && docker compose up -d
 ```
 
 ### Standalone Executable
+
 Download the latest version from [Releases](https://github.com/ev1233/wol-gateway/releases/latest)
 
 ### Github install
+
 ```bash
 # Linux/macOS
 git pull
@@ -111,7 +114,6 @@ python3 setup_wol.py
 git pull
 python setup_wol.py
 ```
-
 
 ## Persistent Configuration
 
@@ -179,7 +181,7 @@ pip install flask wakeonlan
 python wol_gatway.py
 ```
 
-for more info see 
+for more info see
 [the deployment guide][DEPLOYMENT.md]
 
 on VScode you can run the gateway with out the setup script by pressing **ctrl+shift+b**
