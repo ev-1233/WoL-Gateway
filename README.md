@@ -54,7 +54,7 @@ The setup script will:
 
 If you just love git that much:
 
-**python3 and pip must be installed and we highly recommend you install docker(technically optional):**
+**python3 and pip must be installed and I highly recommend you install docker(technically optional):**
 
 - python3 [install guide](https://pythongeeks.org/python-3-installation-and-setup-guide/ "by pythongeeks.org")
 - Pip [install guide](https://pip.pypa.io/en/stable/installation/ "from pip themselves")
